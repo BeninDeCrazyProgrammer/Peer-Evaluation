@@ -1,16 +1,14 @@
 import os
 import hmac
-from flask import Blueprint, request, jsonify, redirect, session
+from flask import Blueprint, request, jsonify
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from authlib.integrations.flask_client import OAuth
 
 from models import Lecturer as LecturerModel
 from rate_limit import limiter
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 login_manager = LoginManager()
-oauth = OAuth()
 
 
 class LecturerSession(UserMixin):
@@ -23,14 +21,6 @@ class LecturerSession(UserMixin):
 
 def init_auth(app):
     login_manager.init_app(app)
-    oauth.init_app(app)
-    oauth.register(
-        name="google",
-        client_id=os.environ.get("GOOGLE_CLIENT_ID"),
-        client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
-        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-        client_kwargs={"scope": "openid email profile"},
-    )
 
 
 @login_manager.user_loader
@@ -80,42 +70,6 @@ def login():
 
     login_user(LecturerSession(lecturer))
     return jsonify({"message": "Logged in", "name": lecturer.name, "email": lecturer.email})
-
-
-@auth_bp.route("/google/start")
-def google_start():
-    # Stash whatever system key the person typed before clicking "Continue
-    # with Google" — the callback needs it if this turns out to be a new
-    # account, since Google's own screen has no field for it.
-    session["pending_system_key"] = request.args.get("key", "")
-    redirect_uri = os.environ.get("GOOGLE_REDIRECT_URI")
-    return oauth.google.authorize_redirect(redirect_uri)
-
-
-@auth_bp.route("/google/callback")
-def google_callback():
-    token = oauth.google.authorize_access_token()
-    userinfo = token.get("userinfo") or {}
-    google_id, email, name = userinfo.get("sub"), userinfo.get("email"), userinfo.get("name")
-    if not email:
-        return jsonify({"error": "Google did not return an email address"}), 400
-
-    submitted_key = session.pop("pending_system_key", "")
-    lecturer = LecturerModel.first(google_id=google_id) or LecturerModel.first(email=email)
-    if lecturer:
-        lecturer.update(google_id=google_id)
-    else:
-        # No existing lecturer account for this Google identity — this is a
-        # brand-new signup, so it's gated by the system key exactly like the
-        # password-based /register route is.
-        if not _check_system_key(submitted_key):
-            frontend_url = os.environ.get("FRONTEND_URL", "/")
-            return redirect(f"{frontend_url}/lecturer/login.html?error=system_key")
-        lecturer = LecturerModel.create(name=name or email, email=email, google_id=google_id)
-
-    login_user(LecturerSession(lecturer))
-    frontend_url = os.environ.get("FRONTEND_URL", "/")
-    return redirect(f"{frontend_url}/lecturer/dashboard.html")
 
 
 @auth_bp.route("/logout", methods=["POST"])
