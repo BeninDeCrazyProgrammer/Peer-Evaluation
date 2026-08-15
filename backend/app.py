@@ -1,6 +1,5 @@
 import os
-import logging
-from flask import Flask, request
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
 
@@ -20,52 +19,27 @@ def create_app():
 
     local_dev = os.environ.get("LOCAL_DEV", "").lower() in ("1", "true", "yes")
 
+    # Global CORS configuration
+    origins = [
+        "https://benindecrazyprogrammer.github.io",
+        "https://benindecrazyprogrammer.github.io/Peer-Evaluation"
+    ]
+    if os.environ.get("FRONTEND_URL"):
+        origins.append(os.environ.get("FRONTEND_URL").rstrip("/"))
+
+    CORS(app, supports_credentials=True, origins=origins)
+
     if local_dev:
         app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
         app.config["SESSION_COOKIE_SECURE"] = False
-        # Local frontend serving logic...
-        frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")
-        app.static_folder = frontend_dir
-        app.static_url_path = ""
-        @app.route("/", defaults={"path": "index.html"})
-        @app.route("/<path:path>")
-        def serve_frontend(path):
-            from flask import send_from_directory
-            full = os.path.join(frontend_dir, path)
-            if not os.path.isfile(full):
-                return send_from_directory(frontend_dir, "index.html")
-            return send_from_directory(frontend_dir, path)
-        
-        # Allow everything in local dev
-        CORS(app, supports_credentials=True, origins="*")
     else:
         app.config["SESSION_COOKIE_SAMESITE"] = "None"
         app.config["SESSION_COOKIE_SECURE"] = True
-        
-        # PRODUCTION CORS:
-        # We allow your specific GitHub Pages domain and the project path.
-        # We also allow the "origin" to be the environment variable.
-        allowed_origins = [
-            "https://benindecrazyprogrammer.github.io",
-            "https://benindecrazyprogrammer.github.io/Peer-Evaluation"
-        ]
-        
-        frontend_env = os.environ.get("FRONTEND_URL")
-        if frontend_env:
-            allowed_origins.append(frontend_env.rstrip("/"))
-            # Also allow with a slash just in case
-            allowed_origins.append(frontend_env.rstrip("/") + "/")
-
-        CORS(app, supports_credentials=True, origins=allowed_origins)
 
     init_auth(app)
     
-    # Initialize DB within app context
     with app.app_context():
-        try:
-            init_db()
-        except Exception as e:
-            print(f"Database Init Error: {e}")
+        init_db()
 
     # Register Blueprints
     app.register_blueprint(auth_bp)
@@ -75,9 +49,21 @@ def create_app():
     app.register_blueprint(submissions_bp)
     app.register_blueprint(dashboard_bp)
 
+    # --- THE CRITICAL FIX: Global Error Handler ---
+    @app.errorhandler(Exception)
+    def handle_exception(e):
+        # Log the error to Render console
+        print(f"SERVER CRASH: {e}")
+        response = jsonify({"error": str(e)})
+        response.status_code = 500
+        # Manual CORS headers for the error response
+        response.headers.add("Access-Control-Allow-Origin", request.headers.get("Origin", "*"))
+        response.headers.add("Access-Control-Allow-Credentials", "true")
+        return response
+
     @app.route("/health")
     def health():
-        return {"status": "ok", "origin_detected": request.headers.get("Origin")}
+        return {"status": "ok"}
 
     return app
 
