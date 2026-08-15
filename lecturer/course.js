@@ -4,6 +4,29 @@ if (!courseId) window.location.href = "dashboard.html";
 const gotoSection = initSections();
 let editingEvalId = null;
 
+// Rating-scale presets. "custom" isn't filled by a click — it's what the
+// dropdown falls back to display-wise once someone hand-edits a preset's rows.
+const SCALE_PRESETS = {
+    distinguished: [[3, "Distinguished"], [2, "Proficient"], [1, "Basic"], [0, "Unacceptable"]],
+    satisfactory: [
+        [4, "Excellent/Outstanding"], [3, "Above Satisfactory"], [2, "Satisfactory"],
+        [1, "Below Satisfactory"], [0, "Unacceptable"],
+    ],
+    simple3: [[4, "Outstanding"], [2, "Fair"], [0, "Unacceptable"]],
+};
+
+// Default criteria match the group-work rubric (Frandsen 2004 / Parr 2003) —
+// same set the lecturer's own printed rubric uses.
+const DEFAULT_CRITERIA = [
+    "Workload",
+    "Getting Organized",
+    "Participation in Discussions",
+    "Meeting Deadlines",
+    "Showing up for Meetings",
+    "Providing Feedback",
+    "Receiving Feedback",
+];
+
 // UI Helpers
 const createRow = (type, value = "", label = "") => {
     const div = document.createElement("div");
@@ -20,9 +43,45 @@ const createRow = (type, value = "", label = "") => {
             <button class="p-2 text-slate-300 hover:text-red-500 transition-colors remove-row"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
         `;
     }
-    div.querySelector(".remove-row").addEventListener("click", () => div.remove());
+    if (type === "scale") {
+        div.querySelector(".remove-row").addEventListener("click", () => {
+            div.remove();
+            markScaleAsCustom();
+        });
+        div.querySelector(".scale-value").addEventListener("input", markScaleAsCustom);
+        div.querySelector(".scale-label").addEventListener("input", markScaleAsCustom);
+    } else {
+        div.querySelector(".remove-row").addEventListener("click", () => div.remove());
+    }
     return div;
 };
+
+function applyScalePreset(name) {
+    const rows = document.getElementById("scaleRows");
+    rows.innerHTML = "";
+    SCALE_PRESETS[name].forEach(([v, l]) => rows.appendChild(createRow("scale", v, l)));
+    lucide.createIcons();
+}
+
+// If someone hand-edits a preset's rows (or adds/removes a point), the
+// dropdown shouldn't keep claiming a preset that no longer matches — flip it
+// to "Custom" so what's shown always matches what will actually be saved.
+let suppressCustomFlag = false;
+function markScaleAsCustom() {
+    if (suppressCustomFlag) return;
+    document.getElementById("scalePreset").value = "custom";
+}
+
+document.getElementById("scalePreset").addEventListener("change", (e) => {
+    if (e.target.value === "custom") return; // nothing to fill, they're already editing freely
+    applyScalePreset(e.target.value);
+});
+
+document.getElementById("addScalePoint").addEventListener("click", () => {
+    document.getElementById("scaleRows").appendChild(createRow("scale"));
+    document.getElementById("scalePreset").value = "custom";
+    lucide.createIcons();
+});
 
 // Initial Load
 async function loadCourseData() {
@@ -77,13 +136,26 @@ function resetForm() {
     document.getElementById("createEvalBtn").textContent = "Create Evaluation";
     document.getElementById("evalTitle").value = "";
     document.getElementById("criteriaRows").innerHTML = "";
-    document.getElementById("scaleRows").innerHTML = "";
-    
-    ["Participation", "Quality of Work", "Communication"].forEach(c => 
+
+    DEFAULT_CRITERIA.forEach(c =>
         document.getElementById("criteriaRows").appendChild(createRow('criterion', c)));
-    [[0, "Unacceptable"], [2, "Fair"], [4, "Outstanding"]].forEach(([v, l]) => 
-        document.getElementById("scaleRows").appendChild(createRow('scale', v, l)));
+
+    document.getElementById("scalePreset").value = "distinguished";
+    applyScalePreset("distinguished");
     lucide.createIcons();
+}
+
+// Does this saved scale exactly match one of the presets? Used so the
+// dropdown reflects reality when editing an existing evaluation, instead of
+// always defaulting to "Custom".
+function detectScalePreset(scale) {
+    for (const [name, points] of Object.entries(SCALE_PRESETS)) {
+        if (points.length === scale.length &&
+            points.every(([v, l], i) => v === scale[i].value && l === scale[i].label)) {
+            return name;
+        }
+    }
+    return "custom";
 }
 
 async function startEditing(id) {
@@ -97,8 +169,12 @@ async function startEditing(id) {
     document.getElementById("criteriaRows").innerHTML = "";
     document.getElementById("scaleRows").innerHTML = "";
     ev.criteria.forEach(c => document.getElementById("criteriaRows").appendChild(createRow('criterion', c.name)));
+
+    suppressCustomFlag = true; // populating from saved data isn't a "hand edit"
     ev.scale.forEach(s => document.getElementById("scaleRows").appendChild(createRow('scale', s.value, s.label)));
-    
+    suppressCustomFlag = false;
+    document.getElementById("scalePreset").value = detectScalePreset(ev.scale);
+
     document.getElementById("evalBuilder").scrollIntoView({ behavior: 'smooth' });
     lucide.createIcons();
 }
@@ -190,11 +266,6 @@ function copyLink() {
 // Final Wiring
 document.getElementById("addCriterion").addEventListener("click", () => {
     document.getElementById("criteriaRows").appendChild(createRow('criterion'));
-    lucide.createIcons();
-});
-
-document.getElementById("addScalePoint").addEventListener("click", () => {
-    document.getElementById("scaleRows").appendChild(createRow('scale'));
     lucide.createIcons();
 });
 
