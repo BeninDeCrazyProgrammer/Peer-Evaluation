@@ -38,8 +38,11 @@ function renderKPIs(completion, results) {
     const rate = total > 0 ? Math.round((submitted / total) * 100) : 0;
     document.getElementById("statCompletion").textContent = `${rate}%`;
 
-    // 2. Class Average
-    const avgs = results.aggregates.map(a => a.overall_average).filter(v => v !== null);
+    // 2. Class Average — mean per-criterion score per student (total / number of
+    // criteria), so this stays a small, comparable number even though the table's
+    // "Total" column below is a sum, not an average.
+    const numCriteria = results.criteria.length || 1;
+    const avgs = results.aggregates.map(a => a.total).filter(v => v !== null).map(t => t / numCriteria);
     const classAvg = avgs.length > 0 ? (avgs.reduce((a, b) => a + b, 0) / avgs.length).toFixed(2) : "0.00";
     document.getElementById("statAvg").textContent = classAvg;
 
@@ -90,7 +93,7 @@ function renderAveragesTable(data) {
     head.innerHTML = `
         <th class="p-4 text-xs font-bold text-slate-500 uppercase">Student</th>
         ${data.criteria.map(c => `<th class="p-4 text-xs font-bold text-slate-500 uppercase text-center">${c.name}</th>`).join('')}
-        <th class="p-4 text-xs font-bold text-slate-500 uppercase text-center">Overall</th>
+        <th class="p-4 text-xs font-bold text-slate-500 uppercase text-center">Total</th>
         <th class="p-4 text-xs font-bold text-slate-500 uppercase text-right">Actions</th>
     `;
 
@@ -112,7 +115,7 @@ function renderAveragesTable(data) {
                     return `<td class="p-4 text-center ${colorClass}">${val}</td>`;
                 }).join('')}
                 <td class="p-4 text-center">
-                    <span class="px-3 py-1 bg-slate-900 text-white rounded-full text-xs font-bold">${s.overall_average ?? "—"}</span>
+                    <span class="px-3 py-1 bg-slate-900 text-white rounded-full text-xs font-bold">${s.total ?? "—"}</span>
                 </td>
                 <td class="p-4 text-right">
                     <button onclick="openDrawer('${s.name}')" class="text-orange-600 hover:text-orange-700 font-bold text-xs uppercase tracking-wider">
