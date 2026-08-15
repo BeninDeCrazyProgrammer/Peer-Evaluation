@@ -139,14 +139,24 @@ document.getElementById("uploadBtn").addEventListener("click", async () => {
 
 // Create/Update Evaluation
 document.getElementById("createEvalBtn").addEventListener("click", async () => {
-    const payload = {
-        title: document.getElementById("evalTitle").value.trim(),
-        criteria: [...document.querySelectorAll(".criterion-input")].map(i => i.value.trim()),
-        scale: [...document.querySelectorAll("#scaleRows .flex")].map(row => ({
-            value: parseInt(row.querySelector(".scale-value").value),
-            label: row.querySelector(".scale-label").value.trim()
+    const title = document.getElementById("evalTitle").value.trim();
+    const criteria = [...document.querySelectorAll(".criterion-input")]
+        .map(i => i.value.trim())
+        .filter(Boolean);
+    const scale = [...document.querySelectorAll("#scaleRows .flex")]
+        .map(row => ({
+            value: parseInt(row.querySelector(".scale-value").value, 10),
+            label: row.querySelector(".scale-label").value.trim(),
         }))
-    };
+        .filter(s => s.label && !Number.isNaN(s.value));
+
+    const errorBox = document.getElementById("evalError");
+    hideError(errorBox);
+    if (!title) { showError(errorBox, new Error("Title is required.")); return; }
+    if (criteria.length < 1) { showError(errorBox, new Error("Add at least one criterion.")); return; }
+    if (scale.length < 2) { showError(errorBox, new Error("The scale needs at least 2 points with a value and a label.")); return; }
+
+    const payload = { title, criteria, scale };
 
     try {
         const method = editingEvalId ? "PATCH" : "POST";
@@ -155,7 +165,7 @@ document.getElementById("createEvalBtn").addEventListener("click", async () => {
         resetForm();
         loadEvaluations();
     } catch (err) {
-        showError(document.getElementById("evalError"), err);
+        showError(errorBox, err);
     }
 });
 

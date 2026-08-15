@@ -191,28 +191,24 @@ th {
 }
 tr:last-child td { border-bottom: none; }
 
-.table-scroll {
-  overflow-x: auto;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  -webkit-overflow-scrolling: touch;
-}
-.table-scroll table {
-  border: none;
-  border-collapse: separate;
+/* Sticky "Student" column on the results averages table (#aggTable in
+   results.html/js). Uses border-collapse:separate because position:sticky
+   on th/td is unreliable under border-collapse:collapse in Chromium —
+   confirmed by screenshot testing; the header stuck without this while
+   body rows did not. */
+#aggTable {
+  border-collapse: separate !important;
   border-spacing: 0;
 }
-.table-scroll th, .table-scroll td { border-bottom: 1px solid var(--line); }
-.table-scroll tr:last-child td { border-bottom: none; }
-.table-scroll th:first-child,
-.table-scroll td:first-child {
+#aggTable th:first-child,
+#aggTable td:first-child {
   position: sticky;
   left: 0;
   z-index: 1;
-  background: var(--panel);
-  box-shadow: 1px 0 0 var(--line);
-  font-weight: 600;
+  background: #fff;
+  box-shadow: 1px 0 0 rgba(15, 23, 42, 0.08);
 }
+#aggTable thead th:first-child { background: #f8fafc; }
 
 .error-box {
   background: var(--clay-soft);
