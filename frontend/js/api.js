@@ -2,39 +2,40 @@
 // is deployed (e.g. to Render) — everything else in the frontend uses it.
 const API_BASE = "https://peer-evaluation-ngg4.onrender.com"
 
-function getCookie(name) {
-  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
-// The CSRF cookie is only ever *set* by the backend on a response (see
-// csrf.py's after_request hook) — so a browser's very first contact with
-// the API, if it happens to be a POST/PUT/PATCH/DELETE (e.g. submitting the
-// login form as soon as the page loads), has no cookie yet to echo back and
-// gets rejected before one can be minted. Priming with a cheap GET first
-// guarantees the cookie exists before any state-changing call needs it.
-let csrfPrimed = false;
-async function ensureCsrfCookie() {
-  if (csrfPrimed || getCookie("csrf_token")) { csrfPrimed = true; return; }
-  try {
-    await fetch(`${API_BASE}/health`, { credentials: "include" });
-  } catch (e) { /* if this fails, the real request below will surface the error */ }
-  csrfPrimed = true;
+// The CSRF token can't be read via document.cookie: that cookie belongs to
+// the API's domain (onrender.com), not this page's domain (github.io), and
+// document.cookie only ever exposes cookies matching the current page's own
+// origin — no amount of waiting or retrying changes that. Instead, the
+// backend hands the token to us directly in this endpoint's JSON body (a
+// channel CORS *does* let same-origin-approved JS read), and the browser
+// still attaches the matching cookie automatically on every request to the
+// API regardless of what page the JS is running on — so the two line up.
+let csrfTokenPromise = null;
+async function getCsrfToken() {
+  if (!csrfTokenPromise) {
+    csrfTokenPromise = fetch(`${API_BASE}/auth/csrf`, { credentials: "include" })
+      .then(res => res.json())
+      .then(data => data.csrf_token)
+      .catch(err => { csrfTokenPromise = null; throw err; }); // let a later call retry
+  }
+  return csrfTokenPromise;
 }
 
 async function api(path, options = {}) {
   const method = (options.method || "GET").toUpperCase();
   const headers = options.body instanceof FormData ? {} : { "Content-Type": "application/json" };
 
-  // Double-submit CSRF: echo the csrf_token cookie back as a header on any
-  // state-changing request, so the backend can confirm this call actually
-  // came from JS running on our own origin (a forged cross-site form post
-  // can make the browser send our cookies, but can't read them to produce
-  // a matching header). GET/HEAD are read-only and exempt on the server too.
+  // Double-submit CSRF: attach the token as a header on any state-changing
+  // request, so the backend can confirm it matches the cookie the browser
+  // sent automatically. A forged cross-site form post can make the browser
+  // send our cookies, but can't read the JSON response above to discover
+  // the token — so it can't produce a matching header. GET/HEAD are
+  // read-only and exempt on the server too.
   if (!["GET", "HEAD"].includes(method)) {
-    await ensureCsrfCookie();
-    const csrfToken = getCookie("csrf_token");
-    if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
+    try {
+      const csrfToken = await getCsrfToken();
+      if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
+    } catch (e) { /* let the real request below surface the failure */ }
   }
 
   const res = await fetch(`${API_BASE}${path}`, {

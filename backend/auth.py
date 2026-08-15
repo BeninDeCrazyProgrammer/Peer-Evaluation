@@ -6,6 +6,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from models import Lecturer as LecturerModel
 from rate_limit import limiter
+from csrf import get_or_create_csrf_token
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 login_manager = LoginManager()
@@ -39,6 +40,18 @@ def _check_system_key(submitted):
     # mismatched byte, which leaks (via response timing) how many leading
     # characters of a guess are correct. Low-value secret, but free to fix.
     return hmac.compare_digest((submitted or "").strip(), expected)
+
+
+@auth_bp.route("/csrf")
+def csrf_token():
+    """
+    The frontend can't read the csrf_token cookie via document.cookie (it
+    belongs to this API's domain, not the frontend's — see csrf.py's module
+    docstring), so it fetches the value here instead, over a channel CORS
+    actually lets it read. Called once per page load before the first
+    state-changing request.
+    """
+    return jsonify({"csrf_token": get_or_create_csrf_token()})
 
 
 @auth_bp.route("/register", methods=["POST"])
