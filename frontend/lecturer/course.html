@@ -88,7 +88,16 @@
 
                             <!-- Scale Column -->
                             <div class="space-y-4">
-                                <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest">Rating Scale</label>
+                                <div class="flex items-center justify-between">
+                                    <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest">Rating Scale</label>
+                                    <select id="scalePreset" class="text-xs font-bold border border-slate-200 rounded-lg px-2 py-1 bg-slate-50 text-slate-600 outline-none focus:border-orange-600">
+                                        <option value="distinguished">Distinguished / Proficient / Basic / Unacceptable</option>
+                                        <option value="satisfactory">Excellent–Outstanding / Above Satisfactory / Satisfactory / Below Satisfactory / Unacceptable</option>
+                                        <option value="simple3">Unacceptable / Fair / Outstanding</option>
+                                        <option value="custom">Custom (edited below)</option>
+                                    </select>
+                                </div>
+                                <p class="text-[11px] text-slate-400 -mt-2">Picking a preset fills the rows below — you can still edit any label or value afterward.</p>
                                 <div id="scaleRows" class="space-y-2">
                                     <!-- Dynamic -->
                                 </div>
