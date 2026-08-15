@@ -296,4 +296,13 @@ document.getElementById("addCriterion").addEventListener("click", () => {
 
 document.getElementById("cancelEditBtn").addEventListener("click", resetForm);
 
+document.getElementById("logoutBtn").addEventListener("click", async () => {
+    try {
+        await api("/auth/logout", { method: "POST" });
+    } catch (err) {
+        console.warn("Logout request failed, redirecting anyway:", err);
+    }
+    window.location.href = "login.html";
+});
+
 loadCourseData();
