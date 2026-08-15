@@ -2,11 +2,29 @@
 // is deployed (e.g. to Render) — everything else in the frontend uses it.
 const API_BASE = "https://peer-evaluation-ngg4.onrender.com"
 
+function getCookie(name) {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 async function api(path, options = {}) {
+  const method = (options.method || "GET").toUpperCase();
+  const headers = options.body instanceof FormData ? {} : { "Content-Type": "application/json" };
+
+  // Double-submit CSRF: echo the csrf_token cookie back as a header on any
+  // state-changing request, so the backend can confirm this call actually
+  // came from JS running on our own origin (a forged cross-site form post
+  // can make the browser send our cookies, but can't read them to produce
+  // a matching header). GET/HEAD are read-only and exempt on the server too.
+  if (!["GET", "HEAD"].includes(method)) {
+    const csrfToken = getCookie("csrf_token");
+    if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
+  }
+
   const res = await fetch(`${API_BASE}${path}`, {
     credentials: "include",
-    headers: options.body instanceof FormData ? {} : { "Content-Type": "application/json" },
     ...options,
+    headers: { ...headers, ...(options.headers || {}) },
   });
   let data = null;
   try { data = await res.json(); } catch (e) { /* no body */ }
