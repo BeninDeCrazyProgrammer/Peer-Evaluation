@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — PeerEval</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <div class="appbar">
+    <div class="appbar__crumbs">
+      <a class="brand" href="../index.html">Peer<span>Eval</span></a>
+      <span class="sep">/</span>
+      <span class="current">Courses</span>
+    </div>
+    <div class="row">
+      <span class="hint" id="whoami"></span>
+      <button class="btn btn--ghost btn--sm" id="logoutBtn">Log out</button>
+    </div>
+  </div>
+  <div class="wrap">
+    <h1>Your courses</h1>
+
+    <div class="card">
+      <h3>New course</h3>
+      <label for="courseName">Course name</label>
+      <input type="text" id="courseName" placeholder="BMEN 308">
+      <div class="row" style="margin-top:16px">
+        <button class="btn" id="createCourseBtn">Create course</button>
+      </div>
+      <div class="error-box" id="createError" style="display:none"></div>
+    </div>
+
+    <div class="card" id="coursesCard">
+      <h3>Existing courses</h3>
+      <div id="coursesList" class="hint">Loading…</div>
+    </div>
+  </div>
+
+  <script src="../js/api.js"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html>

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Course — PeerEval</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+    <!-- Appbar -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <a class="brand text-xl" href="../index.html">Peer<span class="text-orange-600">Eval</span></a>
+                <span class="text-slate-300">/</span>
+                <a href="dashboard.html" class="text-sm font-medium text-slate-500 hover:text-slate-800">Courses</a>
+                <span class="text-slate-300">/</span>
+                <span id="courseCrumb" class="text-sm font-bold text-slate-900">Loading...</span>
+            </div>
+            <div class="flex items-center gap-4">
+                <span id="courseEyebrow" class="hidden md:block text-[10px] font-bold bg-slate-100 px-2 py-1 rounded text-slate-500 uppercase tracking-tighter">ID: --</span>
+                <a class="btn btn--ghost btn--sm" href="dashboard.html"><i data-lucide="layout-grid" class="w-4 h-4"></i> Back</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 py-8 flex flex-col md:flex-row gap-8">
+        
+        <!-- Sidebar Navigation -->
+        <aside class="w-full md:w-64 space-y-2">
+            <nav class="section-nav flex md:flex-col gap-1 border-none bg-white p-2 rounded-2xl border border-slate-200 shadow-sm">
+                <button class="section-nav__item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all hover:bg-slate-50" data-section="evaluations">
+                    <i data-lucide="clipboard-list" class="w-5 h-5"></i>
+                    <span class="font-bold text-sm">Evaluations</span>
+                </button>
+                <button class="section-nav__item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all hover:bg-slate-50" data-section="groups">
+                    <i data-lucide="users" class="w-5 h-5"></i>
+                    <span class="font-bold text-sm">Groups</span>
+                </button>
+            </nav>
+        </aside>
+
+        <!-- Main Workspace -->
+        <div class="flex-1 space-y-8">
+            
+            <!-- SECTION: EVALUATIONS -->
+            <section class="section-panel space-y-6" data-section="evaluations">
+                <div class="flex justify-between items-end">
+                    <h1 id="courseName" class="text-3xl font-bold text-slate-900">Course Name</h1>
+                    <button id="scrollToNewEval" class="btn btn--clay btn--sm"><i data-lucide="plus" class="w-4 h-4"></i> New Eval</button>
+                </div>
+
+                <!-- Existing Evaluations Grid -->
+                <div id="evalsList" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <!-- Dynamic Cards -->
+                </div>
+
+                <!-- Evaluation Builder Card -->
+                <div id="evalBuilder" class="bg-white rounded-3xl border-2 border-slate-200 p-8 shadow-sm transition-all focus-within:border-orange-600">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h3 id="evalFormTitle" class="text-xl font-bold">New Evaluation</h3>
+                            <p class="text-sm text-slate-400" id="editingHint">Configure your criteria and scoring scale below.</p>
+                        </div>
+                        <button class="btn btn--ghost btn--sm hidden" id="cancelEditBtn">Discard Changes</button>
+                    </div>
+
+                    <div class="space-y-6">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Evaluation Title</label>
+                            <input type="text" id="evalTitle" placeholder="e.g. Midterm Peer Review" class="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-orange-600/20 focus:border-orange-600">
+                        </div>
+
+                        <div class="grid md:grid-cols-2 gap-8">
+                            <!-- Criteria Column -->
+                            <div class="space-y-4">
+                                <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest">Assessment Criteria</label>
+                                <div id="criteriaRows" class="space-y-2">
+                                    <!-- Dynamic -->
+                                </div>
+                                <button class="w-full py-2 border-2 border-dashed border-slate-200 rounded-xl text-xs font-bold text-slate-400 hover:bg-slate-50" id="addCriterion">
+                                    + Add Criterion
+                                </button>
+                            </div>
+
+                            <!-- Scale Column -->
+                            <div class="space-y-4">
+                                <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest">Rating Scale</label>
+                                <div id="scaleRows" class="space-y-2">
+                                    <!-- Dynamic -->
+                                </div>
+                                <button class="w-full py-2 border-2 border-dashed border-slate-200 rounded-xl text-xs font-bold text-slate-400 hover:bg-slate-50" id="addScalePoint">
+                                    + Add Point
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="pt-6 border-t border-slate-100 flex items-center justify-between">
+                            <div id="evalError" class="text-red-500 text-sm font-medium hidden"></div>
+                            <button class="btn btn--clay px-8" id="createEvalBtn">Create Evaluation</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION: GROUPS -->
+            <section class="section-panel space-y-6" data-section="groups">
+                <div class="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm">
+                    <h3 class="text-xl font-bold mb-2">Import Student Groups</h3>
+                    <p class="text-sm text-slate-500 mb-6">Upload your Excel spreadsheet with columns for <code class="bg-slate-100 px-1 rounded text-orange-600 font-bold">Group</code>, <code class="bg-slate-100 px-1 rounded text-orange-600 font-bold">Name</code>, and <code class="bg-slate-100 px-1 rounded text-orange-600 font-bold">ID</code>.</p>
+                    
+                    <div class="flex items-center justify-center w-full">
+                        <label class="flex flex-col items-center justify-center w-full h-32 border-2 border-slate-200 border-dashed rounded-2xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-all">
+                            <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                                <i data-lucide="upload-cloud" class="w-8 h-8 text-slate-400 mb-2"></i>
+                                <p class="text-sm text-slate-500 font-medium" id="fileNameDisplay">Select Excel File (.xlsx, .xls)</p>
+                            </div>
+                            <input type="file" id="groupsFile" class="hidden" accept=".xlsx,.xls" />
+                        </label>
+                    </div>
+
+                    <div class="flex items-center justify-between mt-6">
+                        <div id="uploadError" class="text-red-500 text-sm font-medium hidden"></div>
+                        <button class="btn btn--clay" id="uploadBtn">Sync Group List</button>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm">
+                    <h3 class="text-xl font-bold mb-4">Current Roster</h3>
+                    <div id="groupsList" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- Dynamic Groups -->
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <!-- Modal for Link/QR -->
+    <div id="linkModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl relative animate-bounce-in">
+            <button onclick="closeModal()" class="absolute right-6 top-6 text-slate-400 hover:text-slate-600"><i data-lucide="x"></i></button>
+            <h3 class="text-2xl font-bold mb-2">Evaluation Link</h3>
+            <p class="text-sm text-slate-500 mb-6">Share this URL or QR code with your students.</p>
+            
+            <div id="modalContent" class="space-y-6">
+                <div class="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between gap-2 overflow-hidden">
+                    <span id="shareLink" class="text-xs font-mono text-slate-500 truncate"></span>
+                    <button onclick="copyLink()" class="text-orange-600 font-bold text-xs uppercase shrink-0">Copy</button>
+                </div>
+                <div class="flex justify-center p-4 bg-white rounded-2xl border border-slate-100 shadow-inner">
+                    <img id="qrImage" src="" alt="QR Code" class="w-48 h-48">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/api.js"></script>
+    <script src="course.js"></script>
+    <script>lucide.createIcons();</script>
+</body>
+</html>
