@@ -37,12 +37,24 @@ def load_user(user_id):
     return LecturerSession(lecturer) if lecturer else None
 
 
+def _check_system_key(submitted):
+    expected = os.environ.get("SYSTEM_KEY")
+    if not expected:
+        # Misconfiguration, not an open door: if no key is set on the server,
+        # registration is closed rather than silently unprotected.
+        return False
+    return (submitted or "").strip() == expected
+
+
 @auth_bp.route("/register", methods=["POST"])
 def register():
     data = request.get_json(force=True)
     name, email, password = data.get("name"), data.get("email"), data.get("password")
+    system_key = data.get("system_key")
     if not all([name, email, password]):
         return jsonify({"error": "name, email and password are all required"}), 400
+    if not _check_system_key(system_key):
+        return jsonify({"error": "Invalid system key. Ask your department admin for the current key."}), 403
 
     if LecturerModel.exists(email=email):
         return jsonify({"error": "An account with that email already exists"}), 409
@@ -65,6 +77,10 @@ def login():
 
 @auth_bp.route("/google/start")
 def google_start():
+    # Stash whatever system key the person typed before clicking "Continue
+    # with Google" — the callback needs it if this turns out to be a new
+    # account, since Google's own screen has no field for it.
+    session["pending_system_key"] = request.args.get("key", "")
     redirect_uri = os.environ.get("GOOGLE_REDIRECT_URI")
     return oauth.google.authorize_redirect(redirect_uri)
 
@@ -77,10 +93,17 @@ def google_callback():
     if not email:
         return jsonify({"error": "Google did not return an email address"}), 400
 
+    submitted_key = session.pop("pending_system_key", "")
     lecturer = LecturerModel.first(google_id=google_id) or LecturerModel.first(email=email)
     if lecturer:
         lecturer.update(google_id=google_id)
     else:
+        # No existing lecturer account for this Google identity — this is a
+        # brand-new signup, so it's gated by the system key exactly like the
+        # password-based /register route is.
+        if not _check_system_key(submitted_key):
+            frontend_url = os.environ.get("FRONTEND_URL", "/")
+            return redirect(f"{frontend_url}/lecturer/login.html?error=system_key")
         lecturer = LecturerModel.create(name=name or email, email=email, google_id=google_id)
 
     login_user(LecturerSession(lecturer))

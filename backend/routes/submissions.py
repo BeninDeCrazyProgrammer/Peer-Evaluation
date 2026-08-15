@@ -5,12 +5,18 @@ from models import Evaluation, Student, Submission, SubmissionScore, EvaluationS
 submissions_bp = Blueprint("submissions", __name__, url_prefix="/courses/<int:course_id>/evaluations/<int:evaluation_id>")
 
 
-@submissions_bp.route("/lookup", methods=["POST"])
-def lookup(course_id, evaluation_id):
+def _valid_pin_format(pin):
+    return isinstance(pin, str) and len(pin) == 4 and pin.isdigit()
+
+
+@submissions_bp.route("/identify", methods=["POST"])
+def identify(course_id, evaluation_id):
     """
     Body: {"identifier": "10984191"}   -- student ID or full name
-    Returns the student's record, their group's other members (self excluded),
-    and 409s if they've already submitted this evaluation.
+    First step of access: just resolves who the student is and whether
+    they've claimed a PIN yet, so the frontend knows whether to show a
+    "create your PIN" or "enter your PIN" form next. Doesn't touch scores
+    or reveal groupmates — that only happens after /lookup succeeds.
     """
     data = request.get_json(force=True)
     identifier = (data.get("identifier") or "").strip()
@@ -21,6 +27,70 @@ def lookup(course_id, evaluation_id):
     if not student:
         return jsonify({"error": "We couldn't find you in this course's groups. Check your ID/name and try again."}), 404
 
+    return jsonify({"name": student.name, "has_pin": student.has_pin()})
+
+
+@submissions_bp.route("/claim-pin", methods=["POST"])
+def claim_pin(course_id, evaluation_id):
+    """
+    Body: {"identifier": "10984191", "pin": "4821", "confirm_pin": "4821"}
+    First-time-only: sets this student's PIN. Whoever gets here first for a
+    given name/ID owns that identity from then on — same as any "claim your
+    account" flow. If a PIN is already set, this refuses; the lecturer can
+    clear it (roster > Reset PIN) if a student is legitimately locked out.
+    On success, behaves like /lookup and returns the peer list right away.
+    """
+    data = request.get_json(force=True)
+    identifier = (data.get("identifier") or "").strip()
+    pin = (data.get("pin") or "").strip()
+    confirm_pin = (data.get("confirm_pin") or "").strip()
+
+    if not _valid_pin_format(pin):
+        return jsonify({"error": "PIN must be exactly 4 digits"}), 400
+    if pin != confirm_pin:
+        return jsonify({"error": "PINs don't match"}), 400
+
+    student = Student.find_in_course(course_id, identifier)
+    if not student:
+        return jsonify({"error": "We couldn't find you in this course's groups. Check your ID/name and try again."}), 404
+    if student.has_pin():
+        return jsonify({"error": "A PIN is already set for this name/ID. Log in with it instead, or ask your lecturer to reset it."}), 409
+
+    student.claim_pin(pin)
+    return _access_response(student, evaluation_id)
+
+
+@submissions_bp.route("/lookup", methods=["POST"])
+def lookup(course_id, evaluation_id):
+    """
+    Body: {"identifier": "10984191", "pin": "4821"}
+    Log in with an already-claimed PIN. Returns the student's record, their
+    group's other members (self excluded), and 409s if they've already
+    submitted this evaluation.
+    """
+    data = request.get_json(force=True)
+    identifier = (data.get("identifier") or "").strip()
+    pin = (data.get("pin") or "").strip()
+    if not identifier:
+        return jsonify({"error": "Enter your name or student ID"}), 400
+    if not pin:
+        return jsonify({"error": "Enter your PIN"}), 400
+
+    student = Student.find_in_course(course_id, identifier)
+    if not student:
+        return jsonify({"error": "We couldn't find you in this course's groups. Check your ID/name and try again."}), 404
+    if not student.has_pin():
+        return jsonify({"error": "No PIN has been set for this name/ID yet — create one first.", "needs_claim": True}), 409
+
+    # Deliberately the same error as "not found" — don't reveal whether the
+    # ID/name matched a real student, only that the identifier+PIN pair failed.
+    if not student.check_pin(pin):
+        return jsonify({"error": "Incorrect PIN. Forgot it? Ask your lecturer to reset it."}), 401
+
+    return _access_response(student, evaluation_id)
+
+
+def _access_response(student, evaluation_id):
     if Submission.exists(evaluation_id=evaluation_id, evaluator_student_id=student.id):
         return jsonify({"error": "You've already submitted this evaluation.", "already_submitted": True}), 409
 
@@ -45,10 +115,13 @@ def submit(course_id, evaluation_id):
     """
     data = request.get_json(force=True)
     evaluator_id = data.get("evaluator_student_id")
+    pin = (data.get("pin") or "").strip()
     scores = data.get("scores") or []
 
     if not evaluator_id or not scores:
         return jsonify({"error": "evaluator_student_id and scores are required"}), 400
+    if not pin:
+        return jsonify({"error": "Your PIN is required to submit"}), 400
 
     evaluator = Student.find(evaluator_id)
     if not evaluator:
@@ -58,6 +131,11 @@ def submit(course_id, evaluation_id):
     group = Group.first(id=evaluator.group_id, course_id=course_id)
     if not group:
         return jsonify({"error": "Student not found in this course"}), 404
+    # Re-verify the PIN here too — /lookup and /submit are independent
+    # requests, and this is the call that actually writes scores, so it
+    # can't trust that whoever calls it already passed /lookup.
+    if not evaluator.check_pin(pin):
+        return jsonify({"error": "Incorrect PIN"}), 401
 
     if Submission.exists(evaluation_id=evaluation_id, evaluator_student_id=evaluator_id):
         return jsonify({"error": "You've already submitted this evaluation."}), 409

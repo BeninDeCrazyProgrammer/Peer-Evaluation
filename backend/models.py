@@ -15,6 +15,7 @@ update/delete). Anything that needs a JOIN or an aggregate lives as a named
 classmethod near the model it's most about (e.g. Group.with_students,
 Evaluation.results) so it stays a one-line call from the route.
 """
+from werkzeug.security import generate_password_hash, check_password_hash
 from db import execute, batch
 
 
@@ -54,6 +55,7 @@ SCHEMA = [
         group_id    INTEGER NOT NULL REFERENCES groups(id),
         name        TEXT NOT NULL,
         student_id  TEXT NOT NULL,         -- school ID, as text (some IDs have leading zeros)
+        pin_hash    TEXT,                  -- NULL until the student claims a PIN on first access
         UNIQUE(group_id, student_id)
     )
     """,
@@ -110,8 +112,31 @@ SCHEMA = [
 ]
 
 
+def _migrate_student_pins():
+    """
+    One-time migration for databases created before self-serve PINs existed.
+    CREATE TABLE IF NOT EXISTS doesn't add columns to an existing table, so
+    older DBs need this ALTER TABLE run explicitly. Safe to call every boot —
+    it's a no-op once the column exists.
+
+    Anyone migrating off the earlier lecturer-distributed-PIN design lands
+    here too: those PINs were never actually handed to students, so there's
+    nothing to preserve — everyone just claims fresh on their next visit.
+    """
+    cols = [row[1] for row in execute("PRAGMA table_info(students)").rows]
+    if "pin_hash" not in cols:
+        execute("ALTER TABLE students ADD COLUMN pin_hash TEXT")
+    if "pin" in cols:
+        # Leftover from the old pre-shared-PIN column; no longer read anywhere.
+        # SQLite/libsql's ALTER TABLE DROP COLUMN support is inconsistent
+        # across versions, so it's left in place rather than risk breaking
+        # the migration — harmless, just an unused column.
+        pass
+
+
 def init_db():
     batch(SCHEMA)
+    _migrate_student_pins()
     print("Database schema ready.")
 
 
@@ -221,9 +246,14 @@ class Group(Model):
 
     @classmethod
     def with_students(cls, course_id):
-        """All groups for a course, each with its students nested in, ordered."""
+        """
+        All groups for a course, each with its students nested in, ordered.
+        Includes whether each student has claimed their PIN yet — never the
+        PIN itself, since it's self-set and nobody but the student should
+        know it. This is what lets the lecturer see who might be locked out.
+        """
         rs = execute(
-            "SELECT g.id AS group_id, g.group_label, s.id AS student_pk, s.name, s.student_id "
+            "SELECT g.id AS group_id, g.group_label, s.id AS student_pk, s.name, s.student_id, s.pin_hash "
             "FROM groups g LEFT JOIN students s ON s.group_id = g.id "
             "WHERE g.course_id = ? ORDER BY g.id, s.name",
             [course_id],
@@ -235,7 +265,10 @@ class Group(Model):
                 r["group_id"], {"id": r["group_id"], "group_label": r["group_label"], "students": []}
             )
             if r["student_pk"] is not None:
-                g["students"].append({"id": r["student_pk"], "name": r["name"], "student_id": r["student_id"]})
+                g["students"].append({
+                    "id": r["student_pk"], "name": r["name"], "student_id": r["student_id"],
+                    "pin_set": r["pin_hash"] is not None,
+                })
         return list(groups_by_id.values())
 
     @classmethod
@@ -258,20 +291,38 @@ class Group(Model):
 
 class Student(Model):
     table = "students"
-    columns = ("id", "group_id", "name", "student_id")
+    columns = ("id", "group_id", "name", "student_id", "pin_hash")
+
+    def has_pin(self):
+        return self.pin_hash is not None
+
+    def claim_pin(self, pin):
+        """Set this student's PIN for the first time. Caller must already
+        have checked has_pin() is False — this doesn't re-check, so it can
+        also be used by the lecturer's reset flow to leave a fresh claim open."""
+        self.update(pin_hash=generate_password_hash(pin))
+
+    def check_pin(self, submitted_pin):
+        if not self.pin_hash:
+            return False
+        return check_password_hash(self.pin_hash, (submitted_pin or "").strip())
+
+    def reset_pin(self):
+        """Lecturer-triggered: clear the PIN so the student can claim a new one."""
+        self.update(pin_hash=None)
 
     @classmethod
     def find_in_course(cls, course_id, identifier):
         """Match by student_id first (exact), then by name (case-insensitive)."""
         rs = execute(
-            "SELECT s.id, s.name, s.student_id, s.group_id "
+            "SELECT s.id, s.name, s.student_id, s.group_id, s.pin_hash "
             "FROM students s JOIN groups g ON g.id = s.group_id "
             "WHERE g.course_id = ? AND s.student_id = ?",
             [course_id, identifier],
         )
         if not rs.rows:
             rs = execute(
-                "SELECT s.id, s.name, s.student_id, s.group_id "
+                "SELECT s.id, s.name, s.student_id, s.group_id, s.pin_hash "
                 "FROM students s JOIN groups g ON g.id = s.group_id "
                 "WHERE g.course_id = ? AND LOWER(s.name) = LOWER(?)",
                 [course_id, identifier],

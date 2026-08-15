@@ -17,14 +17,14 @@
 </head>
 <body class="bg-slate-50 min-h-screen">
 
-    <div class="max-w-2xl mx-auto px-4 py-12">
+    <div class="max-w-2xl mx-auto px-4 py-8 sm:py-12">
         <!-- Brand / Logo -->
         <div class="text-center mb-10">
             <a class="brand text-3xl" href="../index.html">Peer<span class="text-orange-600">Eval</span></a>
         </div>
 
-        <!-- ID Card (Step 0) -->
-        <div id="identifyCard" class="bg-white rounded-3xl border border-slate-200 p-8 shadow-xl">
+        <!-- ID Card (Step 0a: name/ID) -->
+        <div id="identifyCard" class="bg-white rounded-3xl border border-slate-200 p-5 sm:p-8 shadow-xl">
             <span class="eyebrow text-orange-600">Student Access</span>
             <h1 id="evalTitleDisplay" class="text-3xl font-bold text-slate-900 mb-2">Loading...</h1>
             <p class="text-slate-500 mb-8">Please identify yourself to begin the evaluation.</p>
@@ -36,10 +36,58 @@
                            class="w-full p-4 rounded-2xl bg-slate-50 border-2 border-slate-100 focus:border-orange-600 outline-none transition-all text-lg font-medium">
                 </div>
                 <button id="findBtn" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold text-lg hover:bg-slate-800 transition-all flex items-center justify-center gap-2">
-                    Begin Evaluation <i data-lucide="arrow-right" class="w-5 h-5"></i>
+                    Continue <i data-lucide="arrow-right" class="w-5 h-5"></i>
                 </button>
                 <div id="identifyError" class="error-box hidden"></div>
             </div>
+        </div>
+
+        <!-- PIN Card (Step 0b: create or enter PIN, shown after identify) -->
+        <div id="pinCard" class="hidden bg-white rounded-3xl border border-slate-200 p-5 sm:p-8 shadow-xl">
+            <button id="pinBackBtn" class="text-xs font-bold text-slate-400 hover:text-slate-600 mb-4 flex items-center gap-1">
+                <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Not you?
+            </button>
+
+            <!-- Shown when this name/ID has no PIN yet -->
+            <div id="pinCreateBlock" class="hidden">
+                <h1 class="text-2xl font-bold text-slate-900 mb-1">Hi <span id="createGreetName"></span> — create a PIN</h1>
+                <p class="text-slate-500 mb-6 text-sm">First time here. Set a 4-digit PIN so only you can access your evaluation next time.</p>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">New PIN</label>
+                        <input type="password" id="newPin" inputmode="numeric" maxlength="4" placeholder="4 digits"
+                               class="w-full p-4 rounded-2xl bg-slate-50 border-2 border-slate-100 focus:border-orange-600 outline-none transition-all text-lg font-medium tracking-widest">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Confirm PIN</label>
+                        <input type="password" id="confirmPin" inputmode="numeric" maxlength="4" placeholder="4 digits"
+                               class="w-full p-4 rounded-2xl bg-slate-50 border-2 border-slate-100 focus:border-orange-600 outline-none transition-all text-lg font-medium tracking-widest">
+                    </div>
+                    <p class="text-xs text-slate-400">Remember this — if you forget it, only your lecturer can reset it.</p>
+                    <button id="claimPinBtn" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold text-lg hover:bg-slate-800 transition-all flex items-center justify-center gap-2">
+                        Set PIN & Continue <i data-lucide="arrow-right" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Shown when this name/ID already has a PIN -->
+            <div id="pinEnterBlock" class="hidden">
+                <h1 class="text-2xl font-bold text-slate-900 mb-1">Welcome back, <span id="loginGreetName"></span></h1>
+                <p class="text-slate-500 mb-6 text-sm">Enter your PIN to continue.</p>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">PIN</label>
+                        <input type="password" id="loginPin" inputmode="numeric" maxlength="4" placeholder="4 digits"
+                               class="w-full p-4 rounded-2xl bg-slate-50 border-2 border-slate-100 focus:border-orange-600 outline-none transition-all text-lg font-medium tracking-widest">
+                    </div>
+                    <button id="loginPinBtn" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold text-lg hover:bg-slate-800 transition-all flex items-center justify-center gap-2">
+                        Continue <i data-lucide="arrow-right" class="w-5 h-5"></i>
+                    </button>
+                    <p class="text-xs text-slate-400 text-center">Forgot your PIN? Ask your lecturer to reset it.</p>
+                </div>
+            </div>
+
+            <div id="pinError" class="error-box hidden mt-4"></div>
         </div>
 
         <!-- The Evaluation Wizard (Step 1+) -->
@@ -52,7 +100,7 @@
                 <span id="progressText" class="text-xs font-bold text-slate-400 uppercase tracking-widest">Peer 1 of 4</span>
             </div>
 
-            <div class="bg-white rounded-3xl border border-slate-200 p-8 shadow-xl relative overflow-hidden">
+            <div class="bg-white rounded-3xl border border-slate-200 p-5 sm:p-8 shadow-xl relative overflow-hidden">
                 <div id="wizardGreeting" class="mb-8">
                     <h2 class="text-2xl font-bold text-slate-900" id="currentPeerName">Rating Jane Doe</h2>
                     <p class="text-slate-500">Based on your experience working together this term.</p>

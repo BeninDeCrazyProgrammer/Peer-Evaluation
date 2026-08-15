@@ -24,6 +24,11 @@
         <input type="text" id="name" placeholder="Dr. Mensah">
       </div>
 
+      <div id="systemKeyField" style="display:none">
+        <label for="systemKey">System key</label>
+        <input type="password" id="systemKey" placeholder="Provided by your department">
+      </div>
+
       <label for="email">Email</label>
       <input type="email" id="email" placeholder="you@university.edu">
 
@@ -41,6 +46,9 @@
       <a class="btn btn--ghost" href="#" id="googleBtn" style="width:100%; justify-content:center">
         Continue with Google
       </a>
+      <p class="hint" id="googleHint" style="display:none; margin-top:10px">
+        First time signing in with Google? Enter your system key above before continuing.
+      </p>
     </div>
   </div>
 

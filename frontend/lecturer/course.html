@@ -59,7 +59,7 @@
                 </div>
 
                 <!-- Evaluation Builder Card -->
-                <div id="evalBuilder" class="bg-white rounded-3xl border-2 border-slate-200 p-8 shadow-sm transition-all focus-within:border-orange-600">
+                <div id="evalBuilder" class="bg-white rounded-3xl border-2 border-slate-200 p-5 sm:p-8 shadow-sm transition-all focus-within:border-orange-600">
                     <div class="flex justify-between items-center mb-6">
                         <div>
                             <h3 id="evalFormTitle" class="text-xl font-bold">New Evaluation</h3>
@@ -117,7 +117,7 @@
 
             <!-- SECTION: GROUPS -->
             <section class="section-panel space-y-6" data-section="groups">
-                <div class="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm">
+                <div class="bg-white rounded-3xl border border-slate-200 p-5 sm:p-8 shadow-sm">
                     <h3 class="text-xl font-bold mb-2">Import Student Groups</h3>
                     <p class="text-sm text-slate-500 mb-6">Upload your Excel spreadsheet with columns for <code class="bg-slate-100 px-1 rounded text-orange-600 font-bold">Group</code>, <code class="bg-slate-100 px-1 rounded text-orange-600 font-bold">Name</code>, and <code class="bg-slate-100 px-1 rounded text-orange-600 font-bold">ID</code>.</p>
                     
@@ -137,8 +137,9 @@
                     </div>
                 </div>
 
-                <div class="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm">
-                    <h3 class="text-xl font-bold mb-4">Current Roster</h3>
+                <div class="bg-white rounded-3xl border border-slate-200 p-5 sm:p-8 shadow-sm">
+                    <h3 class="text-xl font-bold mb-1">Current Roster</h3>
+                    <p class="text-xs text-slate-400 mb-4">Students set their own PIN the first time they open the evaluation link — you never see or share it. If someone forgets theirs (or the wrong person claimed a name/ID), use <span class="font-bold text-slate-500">Reset</span> to let them set a new one.</p>
                     <div id="groupsList" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <!-- Dynamic Groups -->
                     </div>
@@ -150,7 +151,7 @@
 
     <!-- Modal for Link/QR -->
     <div id="linkModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-4">
-        <div class="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl relative animate-bounce-in">
+        <div class="bg-white w-full max-w-md rounded-3xl p-6 sm:p-8 shadow-2xl relative animate-bounce-in">
             <button onclick="closeModal()" class="absolute right-6 top-6 text-slate-400 hover:text-slate-600"><i data-lucide="x"></i></button>
             <h3 class="text-2xl font-bold mb-2">Evaluation Link</h3>
             <p class="text-sm text-slate-500 mb-6">Share this URL or QR code with your students.</p>
