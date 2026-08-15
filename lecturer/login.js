@@ -2,17 +2,9 @@ let mode = "login"; // or "register"
 const errorBox = document.getElementById("errorBox");
 const nameField = document.getElementById("nameField");
 const systemKeyField = document.getElementById("systemKeyField");
-const googleHint = document.getElementById("googleHint");
 const formTitle = document.getElementById("formTitle");
 const toggleMode = document.getElementById("toggleMode");
 const submitBtn = document.getElementById("submitBtn");
-
-// Surface the "system key" error the backend redirects back with when a
-// first-time Google sign-in didn't have a valid key.
-if (qs("error") === "system_key") {
-  mode = "register";
-  showError(errorBox, new Error("Invalid or missing system key. Ask your department admin for the current key, then try again."));
-}
 
 toggleMode.addEventListener("click", () => {
   mode = mode === "login" ? "register" : "login";
@@ -24,7 +16,6 @@ function applyMode() {
   const isRegister = mode === "register";
   nameField.style.display = isRegister ? "block" : "none";
   systemKeyField.style.display = isRegister ? "block" : "none";
-  googleHint.style.display = isRegister ? "block" : "none";
   formTitle.textContent = isRegister ? "Create account" : "Log in";
   toggleMode.textContent = isRegister ? "Already have an account?" : "Need an account?";
   submitBtn.textContent = isRegister ? "Create account" : "Log in";
@@ -51,12 +42,4 @@ submitBtn.addEventListener("click", async () => {
   } catch (err) {
     showError(errorBox, err);
   }
-});
-
-document.getElementById("googleBtn").addEventListener("click", (e) => {
-  e.preventDefault();
-  const systemKey = mode === "register" ? document.getElementById("systemKey").value : "";
-  const url = new URL(`${API_BASE}/auth/google/start`);
-  if (systemKey) url.searchParams.set("key", systemKey);
-  window.location.href = url.toString();
 });
