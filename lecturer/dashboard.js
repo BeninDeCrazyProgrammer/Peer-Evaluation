@@ -45,7 +45,13 @@ document.getElementById("createCourseBtn").addEventListener("click", async () =>
 });
 
 document.getElementById("logoutBtn").addEventListener("click", async () => {
-  await api("/auth/logout", { method: "POST" });
+  try {
+    await api("/auth/logout", { method: "POST" });
+  } catch (err) {
+    // Logging out is a one-way trip regardless — don't strand the lecturer
+    // on the dashboard just because the network call hiccuped.
+    console.warn("Logout request failed, redirecting anyway:", err);
+  }
   window.location.href = "login.html";
 });
 

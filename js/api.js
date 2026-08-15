@@ -7,6 +7,21 @@ function getCookie(name) {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+// The CSRF cookie is only ever *set* by the backend on a response (see
+// csrf.py's after_request hook) — so a browser's very first contact with
+// the API, if it happens to be a POST/PUT/PATCH/DELETE (e.g. submitting the
+// login form as soon as the page loads), has no cookie yet to echo back and
+// gets rejected before one can be minted. Priming with a cheap GET first
+// guarantees the cookie exists before any state-changing call needs it.
+let csrfPrimed = false;
+async function ensureCsrfCookie() {
+  if (csrfPrimed || getCookie("csrf_token")) { csrfPrimed = true; return; }
+  try {
+    await fetch(`${API_BASE}/health`, { credentials: "include" });
+  } catch (e) { /* if this fails, the real request below will surface the error */ }
+  csrfPrimed = true;
+}
+
 async function api(path, options = {}) {
   const method = (options.method || "GET").toUpperCase();
   const headers = options.body instanceof FormData ? {} : { "Content-Type": "application/json" };
@@ -17,6 +32,7 @@ async function api(path, options = {}) {
   // can make the browser send our cookies, but can't read them to produce
   // a matching header). GET/HEAD are read-only and exempt on the server too.
   if (!["GET", "HEAD"].includes(method)) {
+    await ensureCsrfCookie();
     const csrfToken = getCookie("csrf_token");
     if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
   }

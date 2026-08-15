@@ -172,4 +172,13 @@ function closeDrawer() {
     document.getElementById("detailDrawer").classList.add("hidden");
 }
 
+document.getElementById("logoutBtn").addEventListener("click", async () => {
+    try {
+        await api("/auth/logout", { method: "POST" });
+    } catch (err) {
+        console.warn("Logout request failed, redirecting anyway:", err);
+    }
+    window.location.href = "login.html";
+});
+
 loadPage();
