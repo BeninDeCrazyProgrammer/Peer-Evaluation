@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Results — PeerEval</title>
+    <!-- Modern UI Stack -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        /* Custom overrides to blend Tailwind with your style.css */
+        .kpi-card { @apply bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4; }
+        .tab-btn { @apply px-6 py-3 font-semibold text-sm transition-all border-b-2 border-transparent; }
+        .tab-btn.is-active { @apply border-orange-600 text-orange-600 bg-orange-50/50; }
+        .status-ring { transition: stroke-dashoffset 0.5s ease; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+    <!-- Appbar -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <a class="brand text-xl" href="../index.html">Peer<span class="text-orange-600">Eval</span></a>
+                <span class="text-slate-300">/</span>
+                <a href="dashboard.html" class="text-sm font-medium text-slate-500 hover:text-slate-800">Courses</a>
+                <span class="text-slate-300">/</span>
+                <a href="#" id="backLink" class="text-sm font-medium text-slate-500 hover:text-slate-800">Course</a>
+                <span class="text-slate-300">/</span>
+                <span class="text-sm font-bold text-slate-900">Results</span>
+            </div>
+            <a id="exportBtn" href="#" class="btn btn--clay btn--sm">
+                <i data-lucide="download" class="w-4 h-4"></i> Export CSV
+            </a>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 py-8">
+        <div class="mb-8">
+            <span class="eyebrow text-orange-600">Analytics Dashboard</span>
+            <h1 id="evalTitle" class="text-3xl font-bold text-slate-900">Loading Evaluation...</h1>
+        </div>
+
+        <!-- KPI Row -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="kpi-card">
+                <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
+                    <i data-lucide="check-circle"></i>
+                </div>
+                <div>
+                    <p class="text-sm text-slate-500 font-medium">Completion Rate</p>
+                    <h3 id="statCompletion" class="text-2xl font-bold">0%</h3>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-green-600">
+                    <i data-lucide="bar-chart-3"></i>
+                </div>
+                <div>
+                    <p class="text-sm text-slate-500 font-medium">Class Average</p>
+                    <h3 id="statAvg" class="text-2xl font-bold">0.00</h3>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center text-amber-600">
+                    <i data-lucide="alert-triangle"></i>
+                </div>
+                <div>
+                    <p class="text-sm text-slate-500 font-medium">Potential Conflicts</p>
+                    <h3 id="statConflicts" class="text-2xl font-bold">0</h3>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab System -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <nav class="flex border-b border-slate-200 section-nav">
+                <button class="tab-btn section-nav__item" data-section="averages">
+                    <div class="flex items-center gap-2"><i data-lucide="layout-list" class="w-4 h-4"></i> Performance Table</div>
+                </button>
+                <button class="tab-btn section-nav__item" data-section="completion">
+                    <div class="flex items-center gap-2"><i data-lucide="users" class="w-4 h-4"></i> Group Status</div>
+                </button>
+            </nav>
+
+            <!-- Averages Panel (Master Table) -->
+            <section class="section-panel p-6" data-section="averages">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-lg font-bold">Student Performance Breakdown</h3>
+                    <div class="text-xs text-slate-400 italic font-mono uppercase tracking-widest">Live Data</div>
+                </div>
+                <div class="overflow-x-auto rounded-lg border border-slate-100">
+                    <table class="w-full text-left border-collapse" id="aggTable">
+                        <thead class="bg-slate-50 border-b border-slate-200">
+                            <tr id="aggHead">
+                                <!-- Dynamic -->
+                            </tr>
+                        </thead>
+                        <tbody id="aggBody" class="divide-y divide-slate-100">
+                            <!-- Dynamic -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Completion Panel -->
+            <section class="section-panel p-6" data-section="completion">
+                <div id="completionGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <!-- Dynamic Group Cards -->
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Side Drawer for Individual Breakdown (Hidden by default) -->
+    <div id="detailDrawer" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] hidden flex justify-end">
+        <div class="w-full max-w-2xl bg-white h-full shadow-2xl p-8 overflow-y-auto animate-slide-in">
+            <div class="flex justify-between items-center mb-6">
+                <h2 id="drawerTitle" class="text-2xl font-bold">Student Details</h2>
+                <button onclick="closeDrawer()" class="p-2 hover:bg-slate-100 rounded-full"><i data-lucide="x"></i></button>
+            </div>
+            <div id="drawerContent">
+                <!-- Detailed individual ratings go here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/api.js"></script>
+    <script src="results.js"></script>
+    <script>lucide.createIcons();</script>
+</body>
+</html>

@@ -1,0 +1,71 @@
+# --- Secrets & Environment Variables ---
+# Never commit these! They contain your Turso tokens and Google Client Secrets.
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Databases
+backend/db/local.db
+*.db
+*.sqlite3
+
+# Environments and Secrets
+.env
+venv/
+.venv/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+.env
+.env.local
+.env.*.local
+
+# --- Python / Backend ---
+# Virtual environments
+env/
+ENV/
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+
+# Distribution / Build (if you ever use them)
+dist/
+build/
+*.egg-info/
+
+# --- Databases ---
+# Ignore local SQLite files. 
+# We use Turso for production, so your local dev DB stays local.
+backend/db/*.db
+*.sqlite3
+
+# --- Frontend ---
+# If you ever decide to use npm/Tailwind CLI locally instead of CDN
+node_modules/
+.eslintcache
+
+# --- OS / IDE Files ---
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# VS Code / IntelliJ / PyCharm
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Logs ---
+*.log
+logs/
