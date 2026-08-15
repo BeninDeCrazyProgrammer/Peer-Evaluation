@@ -1,15 +1,42 @@
 from flask import Blueprint, request, jsonify
 
-from models import Evaluation, Student, Submission, SubmissionScore, EvaluationScale, EvaluationCriterion
+from models import Evaluation, Student, Submission, EvaluationScale, EvaluationCriterion, AmbiguousStudentError
+from db import batch_execute
+from rate_limit import limiter, pin_attempt_key
 
 submissions_bp = Blueprint("submissions", __name__, url_prefix="/courses/<int:course_id>/evaluations/<int:evaluation_id>")
+
+# lookup/ and submit/ both verify a student's PIN and are unauthenticated, so
+# they get a per-identity limit (pin_attempt_key) on top of the plain per-IP
+# one — a 4-digit PIN is only 10,000 combinations, and without this an
+# attacker could brute-force one student's PIN in well under a minute.
 
 
 def _valid_pin_format(pin):
     return isinstance(pin, str) and len(pin) == 4 and pin.isdigit()
 
 
+def _find_student_or_error(course_id, identifier):
+    """
+    Wraps Student.find_in_course for the three routes below: returns
+    (student, None) on a clean match, or (None, (response, status)) if the
+    caller should return early — either nobody matched, or more than one
+    student did (see AmbiguousStudentError's docstring in models.py).
+    """
+    try:
+        student = Student.find_in_course(course_id, identifier)
+    except AmbiguousStudentError:
+        return None, (jsonify({
+            "error": "More than one student matches that. If you used your name, try your student ID instead — "
+                     "if your ID doesn't work either, ask your lecturer to check the roster for a duplicate ID."
+        }), 409)
+    if not student:
+        return None, (jsonify({"error": "We couldn't find you in this course's groups. Check your ID/name and try again."}), 404)
+    return student, None
+
+
 @submissions_bp.route("/identify", methods=["POST"])
+@limiter.limit("30 per hour")
 def identify(course_id, evaluation_id):
     """
     Body: {"identifier": "10984191"}   -- student ID or full name
@@ -23,14 +50,15 @@ def identify(course_id, evaluation_id):
     if not identifier:
         return jsonify({"error": "Enter your name or student ID"}), 400
 
-    student = Student.find_in_course(course_id, identifier)
-    if not student:
-        return jsonify({"error": "We couldn't find you in this course's groups. Check your ID/name and try again."}), 404
+    student, error = _find_student_or_error(course_id, identifier)
+    if error:
+        return error
 
     return jsonify({"name": student.name, "has_pin": student.has_pin()})
 
 
 @submissions_bp.route("/claim-pin", methods=["POST"])
+@limiter.limit("20 per hour")
 def claim_pin(course_id, evaluation_id):
     """
     Body: {"identifier": "10984191", "pin": "4821", "confirm_pin": "4821"}
@@ -50,9 +78,9 @@ def claim_pin(course_id, evaluation_id):
     if pin != confirm_pin:
         return jsonify({"error": "PINs don't match"}), 400
 
-    student = Student.find_in_course(course_id, identifier)
-    if not student:
-        return jsonify({"error": "We couldn't find you in this course's groups. Check your ID/name and try again."}), 404
+    student, error = _find_student_or_error(course_id, identifier)
+    if error:
+        return error
     if student.has_pin():
         return jsonify({"error": "A PIN is already set for this name/ID. Log in with it instead, or ask your lecturer to reset it."}), 409
 
@@ -61,6 +89,8 @@ def claim_pin(course_id, evaluation_id):
 
 
 @submissions_bp.route("/lookup", methods=["POST"])
+@limiter.limit("30 per hour")
+@limiter.limit("8 per 15 minutes", key_func=pin_attempt_key)
 def lookup(course_id, evaluation_id):
     """
     Body: {"identifier": "10984191", "pin": "4821"}
@@ -76,9 +106,9 @@ def lookup(course_id, evaluation_id):
     if not pin:
         return jsonify({"error": "Enter your PIN"}), 400
 
-    student = Student.find_in_course(course_id, identifier)
-    if not student:
-        return jsonify({"error": "We couldn't find you in this course's groups. Check your ID/name and try again."}), 404
+    student, error = _find_student_or_error(course_id, identifier)
+    if error:
+        return error
     if not student.has_pin():
         return jsonify({"error": "No PIN has been set for this name/ID yet — create one first.", "needs_claim": True}), 409
 
@@ -103,6 +133,8 @@ def _access_response(student, evaluation_id):
 
 
 @submissions_bp.route("/submit", methods=["POST"])
+@limiter.limit("30 per hour")
+@limiter.limit("8 per 15 minutes", key_func=pin_attempt_key)
 def submit(course_id, evaluation_id):
     """
     Body:
@@ -154,17 +186,43 @@ def submit(course_id, evaluation_id):
         if s.get("score") not in valid_values:
             return jsonify({"error": f"Score {s.get('score')} isn't on this evaluation's scale"}), 400
 
-    expected = len(valid_ratees) * len(valid_criteria)
-    if len(scores) != expected:
-        return jsonify({"error": f"Expected {expected} scores (every peer x every criterion), got {len(scores)}"}), 400
+    # Check the exact set of (ratee, criterion) pairs, not just the count —
+    # matching counts alone would let a client send two scores for one
+    # peer/criterion and silently skip another, passing validation while
+    # leaving a gap in the data.
+    expected_pairs = {(r, c) for r in valid_ratees for c in valid_criteria}
+    submitted_pairs = {(s["ratee_student_id"], s["criterion_id"]) for s in scores}
+    if submitted_pairs != expected_pairs:
+        missing = expected_pairs - submitted_pairs
+        extra = submitted_pairs - expected_pairs
+        duplicates = len(scores) != len(submitted_pairs)
+        detail = "Duplicate entries for the same peer/criterion." if duplicates and not missing and not extra \
+            else "Missing or unexpected peer/criterion combinations."
+        return jsonify({
+            "error": f"Expected exactly one score per peer per criterion — every peer x every criterion. {detail}"
+        }), 400
 
-    submission = Submission.create(evaluation_id=evaluation_id, evaluator_student_id=evaluator_id)
-    for s in scores:
-        SubmissionScore.create(
-            submission_id=submission.id,
-            ratee_student_id=s["ratee_student_id"],
-            criterion_id=s["criterion_id"],
-            score=s["score"],
+    # Written as one atomic batch (Submission + every SubmissionScore) so a
+    # dropped connection or DB error partway through can't leave a Submission
+    # row on its own with only some of its scores — that would both corrupt
+    # this student's data and permanently lock them out of resubmitting,
+    # since submissions are one-per-student with no reset.
+    statements = [
+        (
+            "INSERT INTO submissions (evaluation_id, evaluator_student_id) VALUES (?, ?)",
+            [evaluation_id, evaluator_id],
         )
+    ]
+    for s in scores:
+        statements.append((
+            "INSERT INTO submission_scores (submission_id, ratee_student_id, criterion_id, score) "
+            "VALUES (last_insert_rowid(), ?, ?, ?)",
+            [s["ratee_student_id"], s["criterion_id"], s["score"]],
+        ))
+
+    try:
+        batch_execute(statements)
+    except Exception:
+        return jsonify({"error": "Something went wrong saving your submission. Please try again."}), 500
 
     return jsonify({"message": "Submitted — thank you!"}), 201

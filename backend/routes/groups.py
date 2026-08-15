@@ -17,10 +17,20 @@ def upload_groups(course_id):
     if "file" not in request.files:
         return jsonify({"error": "No file uploaded — send it as multipart/form-data under 'file'"}), 400
 
+    upload = request.files["file"]
+    filename = (upload.filename or "").lower()
+    if not filename.endswith((".xlsx", ".xls")):
+        return jsonify({"error": "Please upload an Excel file (.xlsx or .xls)"}), 400
+
     try:
-        parsed_groups, warnings = parse_groups_excel(request.files["file"])
+        parsed_groups, warnings = parse_groups_excel(upload)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
+    except Exception:
+        # Anything else here is almost always a corrupt/mislabeled file
+        # (e.g. a .csv renamed to .xlsx) rather than a real server bug —
+        # worth a clean 400 instead of falling through to a generic 500.
+        return jsonify({"error": "Couldn't read that file. Make sure it's a valid, unmodified .xlsx/.xls export."}), 400
 
     # Re-uploading replaces the current group list for this course — simplest
     # correct behaviour for "lecturer re-uploads a corrected sheet".

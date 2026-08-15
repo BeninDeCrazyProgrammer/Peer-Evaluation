@@ -289,6 +289,25 @@ class Group(Model):
         return created
 
 
+class AmbiguousStudentError(Exception):
+    """
+    Raised by Student.find_in_course when an identifier matches more than one
+    student in the course, instead of silently picking whichever row came
+    back first. Two different causes need two different responses:
+      - A student_id collision means the roster itself has a data error
+        (student IDs are only enforced unique per group, not per course —
+        see the UNIQUE(group_id, student_id) constraint above), and picking
+        a match silently could let one student log in as another.
+      - A name collision is an expected, harmless case (two students happen
+        to share a name); the fix is just telling that student to use their
+        ID instead of their name.
+    self.identifier is preserved so callers can tell the two apart if needed.
+    """
+    def __init__(self, identifier):
+        self.identifier = identifier
+        super().__init__(f"'{identifier}' matches more than one student in this course")
+
+
 class Student(Model):
     table = "students"
     columns = ("id", "group_id", "name", "student_id", "pin_hash")
@@ -313,7 +332,13 @@ class Student(Model):
 
     @classmethod
     def find_in_course(cls, course_id, identifier):
-        """Match by student_id first (exact), then by name (case-insensitive)."""
+        """
+        Match by student_id first (exact), then by name (case-insensitive) as
+        a fallback for students who don't have their ID handy. Raises
+        AmbiguousStudentError rather than returning an arbitrary match if
+        more than one student matches either lookup — see that class's
+        docstring for why silently picking one is unsafe here.
+        """
         rs = execute(
             "SELECT s.id, s.name, s.student_id, s.group_id, s.pin_hash "
             "FROM students s JOIN groups g ON g.id = s.group_id "
@@ -327,6 +352,8 @@ class Student(Model):
                 "WHERE g.course_id = ? AND LOWER(s.name) = LOWER(?)",
                 [course_id, identifier],
             )
+        if len(rs.rows) > 1:
+            raise AmbiguousStudentError(identifier)
         return cls._from_row(rs.rows[0], rs.columns) if rs.rows else None
 
     @classmethod

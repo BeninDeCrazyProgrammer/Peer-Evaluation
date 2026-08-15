@@ -1,10 +1,12 @@
 import os
+import hmac
 from flask import Blueprint, request, jsonify, redirect, session
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from authlib.integrations.flask_client import OAuth
 
 from models import Lecturer as LecturerModel
+from rate_limit import limiter
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 login_manager = LoginManager()
@@ -43,10 +45,14 @@ def _check_system_key(submitted):
         # Misconfiguration, not an open door: if no key is set on the server,
         # registration is closed rather than silently unprotected.
         return False
-    return (submitted or "").strip() == expected
+    # Constant-time comparison — plain == short-circuits on the first
+    # mismatched byte, which leaks (via response timing) how many leading
+    # characters of a guess are correct. Low-value secret, but free to fix.
+    return hmac.compare_digest((submitted or "").strip(), expected)
 
 
 @auth_bp.route("/register", methods=["POST"])
+@limiter.limit("5 per hour")
 def register():
     data = request.get_json(force=True)
     name, email, password = data.get("name"), data.get("email"), data.get("password")
@@ -64,6 +70,7 @@ def register():
 
 
 @auth_bp.route("/login", methods=["POST"])
+@limiter.limit("10 per 5 minutes")
 def login():
     data = request.get_json(force=True)
     email, password = data.get("email"), data.get("password")

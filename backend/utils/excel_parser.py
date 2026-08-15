@@ -15,8 +15,18 @@ are forward-filled to their group.
 
 Column names are matched loosely (case-insensitive, partial match) since the
 lecturer's exact headers can vary, e.g. "ID" vs "Student ID" vs "Index Number".
+
+Student IDs are only enforced unique per group in the database (see the
+UNIQUE(group_id, student_id) constraint in models.py), not per course — so a
+duplicate ID typo'd into two different groups won't get caught by the DB.
+That's the identifier students log into an evaluation with, so a collision
+means two students can't reliably log in until the lecturer fixes it. This
+parser flags duplicate IDs (and duplicate names, which are recoverable but
+still worth a heads-up) as warnings at upload time, before it becomes a
+student-facing login problem.
 """
 import pandas as pd
+from collections import Counter
 
 
 GROUP_COL_HINTS = ["group"]
@@ -80,5 +90,30 @@ def parse_groups_excel(file_path_or_buffer):
                 f"Group '{group_label}' has fewer than 2 students — peer evaluation needs at least 2."
             )
         groups.append({"group_label": str(group_label).strip(), "students": students})
+
+    # Flag IDs/names that repeat across the whole course, not just within one
+    # group — a duplicate ID breaks student login (it's only unique per group
+    # in the DB); a duplicate name is fine to leave, but that student will
+    # need to use their ID rather than their name to log in.
+    id_counts = Counter()
+    name_counts = Counter()
+    for g in groups:
+        for s in g["students"]:
+            id_counts[s["student_id"]] += 1
+            name_counts[s["name"].lower()] += 1
+
+    dup_ids = sorted(sid for sid, count in id_counts.items() if count > 1)
+    if dup_ids:
+        warnings.append(
+            f"These student IDs appear more than once across different groups, which will stop those "
+            f"students from logging in: {', '.join(dup_ids)}. Please fix the duplicate(s) and re-upload."
+        )
+
+    dup_names = sorted(name for name, count in name_counts.items() if count > 1)
+    if dup_names:
+        warnings.append(
+            f"These names appear more than once across different groups: {', '.join(dup_names)}. "
+            f"Those students should log in with their student ID rather than their name."
+        )
 
     return groups, warnings

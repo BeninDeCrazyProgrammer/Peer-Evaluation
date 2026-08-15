@@ -74,9 +74,12 @@ class TursoHTTPConnection:
 
     This talks to the current, documented v2 API directly with `requests`,
     whose TLS stack (via certifi's CA bundle) is a different code path from
-    libsql's bundled Rust TLS and isn't affected by that bug. Each call is
-    stateless (execute immediately followed by close) since this app never
-    needs multi-statement transactions across HTTP round-trips.
+    libsql's bundled Rust TLS and isn't affected by that bug. A single
+    execute() call is stateless (execute immediately followed by close).
+    Multi-statement writes that need atomicity (e.g. a submission plus all
+    its scores) go through execute_batch() instead, which runs BEGIN,
+    every statement, and COMMIT inside one HTTP round-trip on one Hrana
+    stream — see execute_batch() docstring.
     """
 
     def __init__(self, base_url, auth_token):
@@ -116,6 +119,29 @@ class TursoHTTPConnection:
             rows = [tuple(_decode_value(cell) for cell in row) for row in stmt_result.get("rows", [])]
             cursors.append(_FakeCursor(cols, rows))
         return cursors
+
+    def execute_batch(self, statements):
+        """
+        Run several (sql, args) statements as one atomic unit: BEGIN, each
+        statement, COMMIT — all sent as a single pipeline request, so they
+        share one Hrana stream/session instead of each getting its own
+        stateless execute+close. That matters for two things:
+          - Atomicity: if any statement errors, COMMIT is never reached, and
+            closing the stream without a COMMIT rolls back everything that
+            ran before the error — no partial writes.
+          - `last_insert_rowid()` can be used in a later statement's args-free
+            SQL to refer to the id an earlier INSERT in the same batch just
+            created (see submissions.py submit()), since it's session-scoped.
+        """
+        requests_list = [{"type": "execute", "stmt": {"sql": "BEGIN"}}]
+        for sql, args in statements:
+            stmt = {"sql": sql}
+            if args:
+                stmt["args"] = [_encode_value(a) for a in args]
+            requests_list.append({"type": "execute", "stmt": stmt})
+        requests_list.append({"type": "execute", "stmt": {"sql": "COMMIT"}})
+        requests_list.append({"type": "close"})
+        self._run(requests_list)  # raises on any error result; COMMIT then never lands, close() rolls back
 
     def commit(self):
         pass  # each execute() already runs autocommit-style (execute + close)
@@ -165,6 +191,38 @@ def batch(statements):
     for stmt in statements:
         conn.execute(stmt)
     conn.commit()
+
+
+def batch_execute(statements):
+    """
+    Run several (sql, args) statements as a single atomic unit — all commit
+    together or none do. Use this for any multi-row write where a partial
+    result would corrupt data (e.g. one submission + all its scores); plain
+    execute() calls in a loop each commit independently and can't be undone
+    if a later one in the sequence fails.
+
+    statements: list of (sql, args) tuples, in order. A later statement can
+    reference last_insert_rowid() to pick up the id an earlier INSERT in the
+    same batch just generated, without a round-trip back to Python.
+    """
+    conn = get_connection()
+    if hasattr(conn, "execute_batch"):
+        # TursoHTTPConnection: one pipeline request, real atomicity (see there).
+        conn.execute_batch(statements)
+        return
+    # Local libsql connection: explicit transaction, rolled back on any error.
+    try:
+        conn.execute("BEGIN")
+        for sql, args in statements:
+            conn.execute(sql, args or [])
+        conn.commit()
+    except Exception as e:
+        try:
+            conn.execute("ROLLBACK")
+        except Exception:
+            pass
+        print(f"SQL BATCH EXECUTION ERROR: {e}")
+        raise
 
 
 def close():

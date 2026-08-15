@@ -12,12 +12,31 @@ from routes.evaluations import evaluations_bp
 from routes.submissions import submissions_bp
 from routes.dashboard import dashboard_bp
 from models import init_db
+from rate_limit import limiter
+from csrf import csrf_protect, ensure_csrf_cookie
 
 def create_app():
     app = Flask(__name__, static_folder=None)
-    app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-only-change-me")
-
+    # Applies to every request body app-wide (not just uploads) — the group
+    # roster spreadsheet is the only large payload this app expects, so 10MB
+    # comfortably covers a real roster while still stopping a worker from
+    # getting tied up parsing something huge or malformed.
+    app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
     local_dev = os.environ.get("LOCAL_DEV", "").lower() in ("1", "true", "yes")
+
+    secret_key = os.environ.get("SECRET_KEY")
+    if not secret_key:
+        if local_dev:
+            secret_key = "dev-only-change-me"
+        else:
+            # Signing session cookies with a guessable default in production
+            # means anyone can forge a login session. Fail loudly at startup
+            # instead of silently running insecure.
+            raise RuntimeError(
+                "SECRET_KEY is not set. Refusing to start in production without one — "
+                "set it in your environment (Render dashboard, not .env)."
+            )
+    app.config["SECRET_KEY"] = secret_key
 
     # Global CORS configuration
     origins = [
@@ -51,7 +70,11 @@ def create_app():
         app.config["SESSION_COOKIE_SECURE"] = True
 
     init_auth(app)
-    
+    limiter.init_app(app)
+
+    app.before_request(csrf_protect)
+    app.after_request(lambda response: ensure_csrf_cookie(response, local_dev))
+
     with app.app_context():
         init_db()
 
@@ -77,10 +100,12 @@ def create_app():
             response = jsonify({"error": e.description})
             response.status_code = e.code
         else:
-            # A genuine unhandled exception (bug, DB error, etc.) — log it
-            # for the Render console and return a generic 500.
+            # A genuine unhandled exception (bug, DB error, etc.) — the real
+            # detail goes to the server log only. Returning str(e) to the
+            # client here would leak SQL fragments, file paths, or other
+            # internals to whoever triggered the error.
             print(f"SERVER CRASH: {e}")
-            response = jsonify({"error": str(e)})
+            response = jsonify({"error": "Something went wrong on our end. Please try again."})
             response.status_code = 500
         request_origin = request.headers.get("Origin")
         if request_origin in origins:
