@@ -311,3 +311,59 @@ footer.hint { text-align: center; margin-top: 40px; }
   0% { background-position: 100% 50%; }
   100% { background-position: 0 50%; }
 }
+
+/* ---- Mobile (roughly 9:16 phones, ~360-430px wide) ----
+   Applies to the plain-CSS pages (index, lecturer login, dashboard) — the
+   course/results/evaluate pages are Tailwind and already use sm:/md:
+   breakpoints, so they only need the topbar/appbar rules below since those
+   two bars are shared, hand-rolled markup rather than Tailwind components. */
+@media (max-width: 640px) {
+  .wrap {
+    padding: 24px 16px 56px;
+  }
+
+  h1 { font-size: 1.5rem; }
+  h2 { font-size: 1.2rem; }
+
+  .card {
+    padding: 20px;
+    border-radius: 12px;
+  }
+
+  /* Appbar/topbar: brand+crumbs on their own line, actions (whoami/logout,
+     or nothing) wrap underneath instead of overflowing off-screen — this
+     was the main cause of the cramped/clipped mobile header. */
+  .topbar,
+  .appbar {
+    flex-wrap: wrap;
+    row-gap: 10px;
+    padding: 14px 16px;
+  }
+  .appbar__crumbs { flex-wrap: wrap; row-gap: 6px; }
+  .appbar .row {
+    flex-wrap: wrap;
+    width: 100%;
+    justify-content: space-between;
+  }
+  #whoami {
+    max-width: 60vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Primary form-submit rows (login, create course, etc.): full-width
+     button is an easier tap target and never crowds the edge of the screen. */
+  .card > .row > .btn:only-child {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .list-item {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  table { font-size: 0.82rem; }
+  th, td { padding: 7px 10px; }
+}

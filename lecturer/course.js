@@ -180,17 +180,42 @@ async function startEditing(id) {
 }
 
 // Groups Logic
+let loadedGroups = [];
+
 async function loadGroups() {
-    const groups = await api(`/courses/${courseId}/groups`);
+    loadedGroups = await api(`/courses/${courseId}/groups`);
     const list = document.getElementById("groupsList");
-    list.innerHTML = groups.map(g => `
+    list.innerHTML = loadedGroups.map(g => `
         <div class="p-4 bg-slate-50 rounded-2xl border border-slate-100">
             <h5 class="font-bold text-slate-800 text-sm mb-2">${g.group_label}</h5>
-            <div class="flex flex-wrap gap-1">
-                ${g.students.map(s => `<span class="text-[10px] bg-white border border-slate-200 px-2 py-0.5 rounded-full text-slate-600">${s.name}</span>`).join("")}
+            <div class="space-y-1">
+                ${g.students.map(s => `
+                    <div class="flex items-center justify-between text-xs bg-white border border-slate-200 rounded-lg px-2 py-1.5 gap-2">
+                        <span class="text-slate-700 font-medium truncate">${s.name}</span>
+                        <span class="flex items-center gap-2 shrink-0">
+                            ${s.pin_set
+                                ? `<span class="text-[10px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">PIN set</span>
+                                   <button onclick="resetStudentPin(${s.id}, '${s.name.replace(/'/g, "\\'")}')" class="text-[10px] font-bold text-slate-400 hover:text-red-600 uppercase">Reset</button>`
+                                : `<span class="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Not set yet</span>`}
+                        </span>
+                    </div>
+                `).join("")}
             </div>
         </div>
     `).join("");
+}
+
+// Students create their own PIN the first time they open the evaluation
+// link — the lecturer never sees or distributes it. The only lecturer-side
+// lever is resetting it (forgotten PIN, or the wrong person claimed it).
+async function resetStudentPin(studentId, name) {
+    if (!confirm(`Reset the PIN for ${name}? They'll be asked to set a new one next time they open the evaluation link.`)) return;
+    try {
+        await api(`/courses/${courseId}/groups/students/${studentId}/reset-pin`, { method: "POST" });
+        loadGroups();
+    } catch (err) {
+        alert(err.message || "Couldn't reset PIN.");
+    }
 }
 
 // File Upload Handler
