@@ -1,6 +1,6 @@
 // Central place for the backend URL. Change this one line once the Flask API
 // is deployed (e.g. to Render) — everything else in the frontend uses it.
-const API_BASE = "http://127.0.0.1:5000";
+const API_BASE = "https://peer-evaluation-ngg4.onrender.com"
 
 async function api(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
