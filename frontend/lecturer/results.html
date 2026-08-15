@@ -31,9 +31,6 @@
                 <span class="text-slate-300">/</span>
                 <span class="text-sm font-bold text-slate-900">Results</span>
             </div>
-            <a id="exportBtn" href="#" class="btn btn--clay btn--sm">
-                <i data-lucide="download" class="w-4 h-4"></i> Export CSV
-            </a>
         </div>
     </header>
 
@@ -43,35 +40,46 @@
             <h1 id="evalTitle" class="text-3xl font-bold text-slate-900">Loading Evaluation...</h1>
         </div>
 
-        <!-- KPI Row -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div class="kpi-card">
-                <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
-                    <i data-lucide="check-circle"></i>
+        <!-- KPI Row (+ Export, stacks below the KPIs on small screens) -->
+        <div class="flex flex-col lg:flex-row gap-6 mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 flex-1">
+                <div class="kpi-card">
+                    <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
+                        <i data-lucide="check-circle"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm text-slate-500 font-medium">Completion Rate</p>
+                        <h3 id="statCompletion" class="text-2xl font-bold">0%</h3>
+                    </div>
                 </div>
-                <div>
-                    <p class="text-sm text-slate-500 font-medium">Completion Rate</p>
-                    <h3 id="statCompletion" class="text-2xl font-bold">0%</h3>
+                <div class="kpi-card">
+                    <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-green-600">
+                        <i data-lucide="bar-chart-3"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm text-slate-500 font-medium">Class Average</p>
+                        <h3 id="statAvg" class="text-2xl font-bold">0.00</h3>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center text-amber-600">
+                        <i data-lucide="alert-triangle"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm text-slate-500 font-medium">Potential Conflicts</p>
+                        <h3 id="statConflicts" class="text-2xl font-bold">0</h3>
+                    </div>
                 </div>
             </div>
-            <div class="kpi-card">
-                <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-green-600">
-                    <i data-lucide="bar-chart-3"></i>
+            <a id="exportBtn" href="#" class="kpi-card lg:w-56 justify-center bg-white hover:bg-slate-50 transition-colors border-dashed">
+                <div class="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center text-orange-600">
+                    <i data-lucide="download"></i>
                 </div>
                 <div>
-                    <p class="text-sm text-slate-500 font-medium">Class Average</p>
-                    <h3 id="statAvg" class="text-2xl font-bold">0.00</h3>
+                    <p class="text-sm font-bold text-slate-800">Export CSV</p>
+                    <p class="text-xs text-slate-400">Download results</p>
                 </div>
-            </div>
-            <div class="kpi-card">
-                <div class="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center text-amber-600">
-                    <i data-lucide="alert-triangle"></i>
-                </div>
-                <div>
-                    <p class="text-sm text-slate-500 font-medium">Potential Conflicts</p>
-                    <h3 id="statConflicts" class="text-2xl font-bold">0</h3>
-                </div>
-            </div>
+            </a>
         </div>
 
         <!-- Tab System -->

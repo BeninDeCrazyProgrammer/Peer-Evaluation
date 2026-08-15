@@ -16,6 +16,9 @@ backend/db/local.db
 venv/
 .venv/
 
+New folder.zip
+New folder/
+
 # OS files
 .DS_Store
 Thumbs.db

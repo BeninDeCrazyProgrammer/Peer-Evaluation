@@ -56,16 +56,32 @@ def export_csv(course_id, evaluation_id):
     writer = csv.writer(buf)
 
     writer.writerow(["Averages per student"])
-    writer.writerow(["Student"] + criteria_names + ["Overall average"])
+    writer.writerow(["Student"] + criteria_names + ["Total"])
     for s in data["aggregates"]:
         by_name = {c["criterion"]: c["average"] for c in s["by_criterion"]}
-        writer.writerow([s["name"]] + [by_name.get(c, "") for c in criteria_names] + [s["overall_average"]])
+        writer.writerow([s["name"]] + [by_name.get(c, "") for c in criteria_names] + [s["total"]])
 
     writer.writerow([])
     writer.writerow(["Individual evaluator scores"])
-    writer.writerow(["Evaluator", "Rated", "Criterion", "Score"])
+    # Pivoted: one row per (evaluator, rated student) submission, one column per
+    # criterion, plus a Total — mirrors the paper form's per-evaluator TOTAL row
+    # instead of one row per single score, which is unreadable at any real scale.
+    writer.writerow(["Evaluator", "Rated"] + criteria_names + ["Total"])
+
+    pairs = {}
+    pair_order = []
     for r in data["individual_scores"]:
-        writer.writerow([r["evaluator_name"], r["ratee_name"], r["criterion"], r["score"]])
+        key = (r["evaluator_name"], r["ratee_name"])
+        if key not in pairs:
+            pairs[key] = {}
+            pair_order.append(key)
+        pairs[key][r["criterion"]] = r["score"]
+
+    for evaluator_name, ratee_name in pair_order:
+        scores = pairs[(evaluator_name, ratee_name)]
+        row_scores = [scores.get(c, "") for c in criteria_names]
+        total = sum(v for v in row_scores if v != "")
+        writer.writerow([evaluator_name, ratee_name] + row_scores + [total])
 
     filename = "".join(c if c.isalnum() or c in " -_" else "_" for c in evaluation.title).strip() or "results"
 

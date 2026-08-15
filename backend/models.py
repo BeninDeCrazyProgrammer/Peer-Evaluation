@@ -412,14 +412,17 @@ class Evaluation(Model):
             r = dict(zip(agg_rs.columns, row))
             student = students_agg.setdefault(
                 r["ratee_id"],
-                {"student_id": r["ratee_id"], "name": r["ratee_name"], "by_criterion": [], "overall_average": None},
+                {"student_id": r["ratee_id"], "name": r["ratee_name"], "by_criterion": [], "total": None},
             )
             student["by_criterion"].append({
                 "criterion": r["criterion"], "average": round(r["avg_score"], 2), "num_ratings": r["num_ratings"],
             })
         for student in students_agg.values():
+            # Total (not average): sum of this student's per-criterion averages,
+            # matching the paper form's "TOTAL" row (sum of scores across criteria),
+            # not a mean across criteria.
             vals = [c["average"] for c in student["by_criterion"]]
-            student["overall_average"] = round(sum(vals) / len(vals), 2) if vals else None
+            student["total"] = round(sum(vals), 2) if vals else None
 
         return {"criteria": criteria, "aggregates": list(students_agg.values()), "individual_scores": individual_scores}
 
