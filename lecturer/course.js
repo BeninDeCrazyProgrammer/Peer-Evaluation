@@ -99,34 +99,148 @@ async function loadCourseData() {
 }
 
 // Evaluation Logic
+let loadedEvals = [];
+const expandedEvalIds = new Set();
+const evalDetailsCache = {};
+
+function formatDeadline(iso) {
+    if (!iso) return null;
+    return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+// <input type="datetime-local"> wants "YYYY-MM-DDTHH:MM" in LOCAL time, no
+// offset — this converts a stored UTC ISO string to that shape for prefill.
+function toDatetimeLocalValue(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const pad = n => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// The reverse: a datetime-local value is implicitly local time with no
+// offset — new Date() parses it as such, and toISOString() gives back a
+// proper UTC ISO string the backend can compare against datetime.now(utc).
+function fromDatetimeLocalValue(value) {
+    if (!value) return null;
+    return new Date(value).toISOString();
+}
+
 async function loadEvaluations() {
-    const evals = await api(`/courses/${courseId}/evaluations`);
+    loadedEvals = await api(`/courses/${courseId}/evaluations`);
     const list = document.getElementById("evalsList");
-    
-    if (evals.length === 0) {
-        list.innerHTML = `<div class="col-span-full p-12 text-center border-2 border-dashed border-slate-100 rounded-3xl text-slate-400">No evaluations created yet.</div>`;
+
+    if (loadedEvals.length === 0) {
+        list.innerHTML = `<div class="p-12 text-center border-2 border-dashed border-slate-100 rounded-3xl text-slate-400">No evaluations created yet.</div>`;
         return;
     }
 
-    list.innerHTML = evals.map(ev => `
-        <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all flex justify-between items-center group">
-            <div>
-                <div class="flex items-center gap-2 mb-1">
-                    <h4 class="font-bold text-slate-900">${ev.title}</h4>
-                    <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${ev.status === 'open' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}">
-                        ${ev.status}
-                    </span>
+    list.innerHTML = loadedEvals.map(ev => {
+        const isOpen = ev.status === "open";
+        const deadlineText = ev.deadline
+            ? `${isOpen ? "Closes" : "Closed"} ${formatDeadline(ev.deadline)}`
+            : null;
+        return `
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="p-5 flex flex-wrap items-center justify-between gap-3 cursor-pointer hover:bg-slate-50/60 transition-colors" onclick="toggleEvalCard(${ev.id})">
+                <div class="flex items-center gap-3 min-w-0">
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400 shrink-0 transition-transform" data-eval-chevron="${ev.id}" style="${expandedEvalIds.has(ev.id) ? 'transform:rotate(90deg)' : ''}"></i>
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <h4 class="font-bold text-slate-900 truncate">${ev.title}</h4>
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider shrink-0 ${isOpen ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}">
+                                ${ev.status}
+                            </span>
+                        </div>
+                        <p class="text-xs text-slate-400">Created ${new Date(ev.created_at).toLocaleDateString()}${deadlineText ? ` · ${deadlineText}` : ""}</p>
+                    </div>
                 </div>
-                <p class="text-xs text-slate-400">Created on ${new Date(ev.created_at).toLocaleDateString()}</p>
+                <div class="flex gap-2 shrink-0" onclick="event.stopPropagation()">
+                    <button onclick="openModal(${ev.id})" class="btn btn--ghost btn--sm"><i data-lucide="share-2" class="w-4 h-4"></i> Share</button>
+                    <a href="results.html?course=${courseId}&evaluation=${ev.id}" class="btn btn--ghost btn--sm"><i data-lucide="pie-chart" class="w-4 h-4"></i> Results</a>
+                    <button onclick="startEditing(${ev.id})" class="btn btn--ghost btn--sm"><i data-lucide="settings" class="w-4 h-4"></i> Settings</button>
+                </div>
             </div>
-            <div class="flex gap-2">
-                <button onclick="openModal(${ev.id})" class="p-2 bg-slate-50 text-slate-600 rounded-xl hover:bg-orange-50 hover:text-orange-600 transition-all" title="Share"><i data-lucide="share-2" class="w-4 h-4"></i></button>
-                <a href="results.html?course=${courseId}&evaluation=${ev.id}" class="p-2 bg-slate-50 text-slate-600 rounded-xl hover:bg-orange-50 hover:text-orange-600 transition-all" title="Results"><i data-lucide="pie-chart" class="w-4 h-4"></i></a>
-                <button onclick="startEditing(${ev.id})" class="p-2 bg-slate-50 text-slate-600 rounded-xl hover:bg-orange-50 hover:text-orange-600 transition-all" title="Edit"><i data-lucide="settings" class="w-4 h-4"></i></button>
+            <div class="${expandedEvalIds.has(ev.id) ? '' : 'hidden'} border-t border-slate-100 p-5 bg-slate-50/50" data-eval-body="${ev.id}">
+                <p class="text-xs text-slate-400">Loading...</p>
             </div>
         </div>
-    `).join("");
+    `;
+    }).join("");
     lucide.createIcons();
+
+    // Re-render bodies for any cards that were already expanded before this reload.
+    expandedEvalIds.forEach(id => { if (evalDetailsCache[id]) renderEvalCardBody(id); });
+}
+
+async function toggleEvalCard(id) {
+    const body = document.querySelector(`[data-eval-body="${id}"]`);
+    const chevron = document.querySelector(`[data-eval-chevron="${id}"]`);
+    if (expandedEvalIds.has(id)) {
+        expandedEvalIds.delete(id);
+        body.classList.add("hidden");
+        chevron.style.transform = "";
+        return;
+    }
+    expandedEvalIds.add(id);
+    body.classList.remove("hidden");
+    chevron.style.transform = "rotate(90deg)";
+
+    if (!evalDetailsCache[id]) {
+        const full = await api(`/courses/${courseId}/evaluations/${id}`);
+        evalDetailsCache[id] = full;
+    }
+    renderEvalCardBody(id);
+}
+
+function renderEvalCardBody(id) {
+    const body = document.querySelector(`[data-eval-body="${id}"]`);
+    if (!body) return;
+    const full = evalDetailsCache[id];
+    body.innerHTML = `
+        <div class="grid sm:grid-cols-2 gap-6 mb-6">
+            <div>
+                <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Assessment Criteria</p>
+                <ul class="space-y-1">
+                    ${full.criteria.map(c => `<li class="text-sm text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-1.5">${c.name}</li>`).join("")}
+                </ul>
+            </div>
+            <div>
+                <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Rating Scale</p>
+                <ul class="space-y-1">
+                    ${full.scale.map(s => `<li class="text-sm text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-1.5 flex items-center justify-between"><span>${s.label}</span><span class="font-mono font-bold text-orange-600">${s.value}</span></li>`).join("")}
+                </ul>
+            </div>
+        </div>
+        <div class="border-t border-slate-200 pt-4 flex flex-wrap items-end gap-3">
+            <div>
+                <label class="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Deadline</label>
+                <input type="datetime-local" data-deadline-input="${id}" value="${toDatetimeLocalValue(full.deadline)}" class="p-2 rounded-lg bg-white border border-slate-200 text-sm outline-none focus:border-orange-600">
+            </div>
+            <button onclick="saveDeadline(${id})" class="btn btn--ghost btn--sm">Update Deadline</button>
+            <span class="text-xs text-slate-400" data-deadline-status="${id}"></span>
+        </div>
+    `;
+    lucide.createIcons();
+}
+
+async function saveDeadline(id) {
+    const input = document.querySelector(`[data-deadline-input="${id}"]`);
+    const deadline = fromDatetimeLocalValue(input.value);
+    try {
+        await api(`/courses/${courseId}/evaluations/${id}/deadline`, {
+            method: "PATCH",
+            body: JSON.stringify({ deadline }),
+        });
+        delete evalDetailsCache[id]; // stale — force a re-fetch below
+        await loadEvaluations(); // re-renders the list (updated badge/deadline text); this
+                                  // card stays expanded since its id is still in expandedEvalIds
+        const full = await api(`/courses/${courseId}/evaluations/${id}`);
+        evalDetailsCache[id] = full;
+        renderEvalCardBody(id);
+    } catch (err) {
+        const statusEl = document.querySelector(`[data-deadline-status="${id}"]`);
+        if (statusEl) statusEl.textContent = err.message || "Couldn't update deadline.";
+    }
 }
 
 function resetForm() {
@@ -135,6 +249,7 @@ function resetForm() {
     document.getElementById("cancelEditBtn").classList.add("hidden");
     document.getElementById("createEvalBtn").textContent = "Create Evaluation";
     document.getElementById("evalTitle").value = "";
+    document.getElementById("evalDeadline").value = "";
     document.getElementById("criteriaRows").innerHTML = "";
 
     DEFAULT_CRITERIA.forEach(c =>
@@ -165,7 +280,8 @@ async function startEditing(id) {
     document.getElementById("createEvalBtn").textContent = "Save Changes";
     document.getElementById("cancelEditBtn").classList.remove("hidden");
     document.getElementById("evalTitle").value = ev.title;
-    
+    document.getElementById("evalDeadline").value = toDatetimeLocalValue(ev.deadline);
+
     document.getElementById("criteriaRows").innerHTML = "";
     document.getElementById("scaleRows").innerHTML = "";
     ev.criteria.forEach(c => document.getElementById("criteriaRows").appendChild(createRow('criterion', c.name)));
@@ -175,7 +291,7 @@ async function startEditing(id) {
     suppressCustomFlag = false;
     document.getElementById("scalePreset").value = detectScalePreset(ev.scale);
 
-    document.getElementById("evalBuilder").scrollIntoView({ behavior: 'smooth' });
+    gotoSection("builder");
     lucide.createIcons();
 }
 
@@ -241,6 +357,7 @@ document.getElementById("uploadBtn").addEventListener("click", async () => {
 // Create/Update Evaluation
 document.getElementById("createEvalBtn").addEventListener("click", async () => {
     const title = document.getElementById("evalTitle").value.trim();
+    const deadline = fromDatetimeLocalValue(document.getElementById("evalDeadline").value);
     const criteria = [...document.querySelectorAll(".criterion-input")]
         .map(i => i.value.trim())
         .filter(Boolean);
@@ -257,13 +374,16 @@ document.getElementById("createEvalBtn").addEventListener("click", async () => {
     if (criteria.length < 1) { showError(errorBox, new Error("Add at least one criterion.")); return; }
     if (scale.length < 2) { showError(errorBox, new Error("The scale needs at least 2 points with a value and a label.")); return; }
 
-    const payload = { title, criteria, scale };
+    const payload = { title, criteria, scale, deadline };
+    const editedId = editingEvalId;
 
     try {
-        const method = editingEvalId ? "PATCH" : "POST";
-        const path = editingEvalId ? `/courses/${courseId}/evaluations/${editingEvalId}` : `/courses/${courseId}/evaluations`;
+        const method = editedId ? "PATCH" : "POST";
+        const path = editedId ? `/courses/${courseId}/evaluations/${editedId}` : `/courses/${courseId}/evaluations`;
         await api(path, { method, body: JSON.stringify(payload) });
+        if (editedId) delete evalDetailsCache[editedId]; // stale — card will re-fetch if expanded again
         resetForm();
+        gotoSection("evaluations");
         loadEvaluations();
     } catch (err) {
         showError(errorBox, err);
@@ -294,7 +414,20 @@ document.getElementById("addCriterion").addEventListener("click", () => {
     lucide.createIcons();
 });
 
-document.getElementById("cancelEditBtn").addEventListener("click", resetForm);
+document.getElementById("cancelEditBtn").addEventListener("click", () => {
+    resetForm();
+    gotoSection("evaluations");
+});
+
+document.getElementById("newEvalBtn").addEventListener("click", () => {
+    resetForm();
+    gotoSection("builder");
+});
+
+document.getElementById("backToEvalsBtn").addEventListener("click", () => {
+    resetForm();
+    gotoSection("evaluations");
+});
 
 document.getElementById("logoutBtn").addEventListener("click", async () => {
     try {
