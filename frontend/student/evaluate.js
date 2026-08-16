@@ -11,11 +11,18 @@ if (!courseId || !evalId) {
 }
 
 async function init() {
-    evaluationData = await api(`/courses/${courseId}/evaluations/${evalId}`);
+    try {
+        evaluationData = await api(`/courses/${courseId}/evaluations/${evalId}`);
+    } catch (err) {
+        document.getElementById("identifyCard").innerHTML =
+            `<p class="p-4 text-center bg-red-50 text-red-600 rounded-xl font-bold">${err.message || "Peer evaluation has closed"}</p>`;
+        return;
+    }
     document.getElementById("evalTitleDisplay").textContent = evaluationData.title;
-    
+
     if (evaluationData.status === "closed") {
-        document.getElementById("identifyCard").innerHTML = `<p class="p-4 text-center bg-red-50 text-red-600 rounded-xl font-bold">This evaluation is now closed.</p>`;
+        document.getElementById("identifyCard").innerHTML =
+            `<p class="p-4 text-center bg-red-50 text-red-600 rounded-xl font-bold">Peer evaluation has closed</p>`;
     }
 }
 

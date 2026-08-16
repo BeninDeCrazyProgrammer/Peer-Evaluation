@@ -277,6 +277,27 @@ footer.hint { text-align: center; margin-top: 40px; }
 .section-panel { display: none; }
 .section-panel.is-active { display: block; }
 
+/* ---- Sidebar variant of the pattern above (course.html) ----
+   The rules above are a horizontal underline tab bar (results.html's
+   Averages/Completion tabs). course.html's left-hand nav uses the same
+   .section-nav__item/.section-panel classes so initSections() can wire it
+   up unchanged, but needs a vertical, background-highlighted look instead
+   of an underline — scoped under .sidebar-nav so results.html is untouched. */
+.sidebar-nav.section-nav {
+  border-bottom: none;
+  margin-bottom: 0;
+  overflow: visible;
+}
+.sidebar-nav .section-nav__item {
+  border-bottom: none;
+  margin-right: 0;
+}
+.sidebar-nav .section-nav__item.is-active {
+  background: var(--clay-soft);
+  color: var(--clay);
+  border-bottom-color: transparent;
+}
+
 /* ---- App shell (persistent top bar w/ identity) ---- */
 .appbar {
   display: flex;

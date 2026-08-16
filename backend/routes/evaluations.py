@@ -1,6 +1,7 @@
 import base64
 import io
 import os
+from datetime import datetime, timezone
 
 from flask import Blueprint, request, jsonify
 from flask_login import login_required
@@ -12,17 +13,49 @@ from routes.courses import _assert_owns_course
 evaluations_bp = Blueprint("evaluations", __name__, url_prefix="/courses/<int:course_id>/evaluations")
 
 
+def _validate_deadline(deadline):
+    """None if not set, a parsed aware datetime if valid, or an error tuple."""
+    if not deadline:
+        return None, None
+    try:
+        parsed = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
+    except ValueError:
+        return None, (jsonify({"error": "Deadline isn't a valid date/time"}), 400)
+    if parsed.tzinfo is None:
+        return None, (jsonify({"error": "Deadline must include a timezone"}), 400)
+    return parsed, None
+
+
 def _validate_payload(data):
     title = (data.get("title") or "").strip()
     criteria = data.get("criteria") or []
     scale = data.get("scale") or []
+    deadline = (data.get("deadline") or "").strip() or None
     if not title:
         return None, (jsonify({"error": "Title is required"}), 400)
     if len(criteria) < 1:
         return None, (jsonify({"error": "At least one criterion is required"}), 400)
     if len(scale) < 2:
         return None, (jsonify({"error": "The scale needs at least 2 points (e.g. 0 and 1)"}), 400)
-    return (title, criteria, scale), None
+    _, error = _validate_deadline(deadline)
+    if error:
+        return None, error
+    return (title, criteria, scale, deadline), None
+
+
+def _deadline_fields_with_reopen(evaluation, deadline):
+    """
+    Fields to persist for a deadline change, including reopening the
+    evaluation if a deadline that had auto-closed it just got pushed into the
+    future — otherwise it'd stay "closed" forever even with a new deadline,
+    since check_and_close() only ever flips open -> closed, never back.
+    """
+    fields = {"deadline": deadline}
+    if deadline and evaluation.status == "closed":
+        parsed, _ = _validate_deadline(deadline)
+        if parsed and parsed > datetime.now(timezone.utc):
+            fields["status"] = "open"
+    return fields
 
 
 @evaluations_bp.route("", methods=["POST"])
@@ -38,9 +71,9 @@ def create_evaluation(course_id):
     parsed, error = _validate_payload(request.get_json(force=True))
     if error:
         return error
-    title, criteria, scale = parsed
+    title, criteria, scale, deadline = parsed
 
-    evaluation = Evaluation.create(course_id=course_id, title=title)
+    evaluation = Evaluation.create(course_id=course_id, title=title, deadline=deadline)
     evaluation.set_criteria_and_scale(criteria, scale)
     return jsonify(evaluation.to_dict()), 201
 
@@ -87,11 +120,36 @@ def update_evaluation(course_id, evaluation_id):
     parsed, error = _validate_payload(request.get_json(force=True))
     if error:
         return error
-    title, criteria, scale = parsed
+    title, criteria, scale, deadline = parsed
 
-    evaluation.update(title=title)
+    evaluation.update(title=title, **_deadline_fields_with_reopen(evaluation, deadline))
     evaluation.set_criteria_and_scale(criteria, scale)
     return jsonify({"message": "Evaluation updated"})
+
+
+@evaluations_bp.route("/<int:evaluation_id>/deadline", methods=["PATCH"])
+@login_required
+def update_deadline(course_id, evaluation_id):
+    """
+    Deadline can be changed any time — including after submissions exist —
+    since unlike criteria/scale it doesn't invalidate anything already
+    answered. Kept separate from the full-form PATCH above for that reason:
+    the lecturer shouldn't have to touch a locked criteria/scale just to
+    push a deadline back.
+    """
+    if not _assert_owns_course(course_id):
+        return jsonify({"error": "Course not found"}), 404
+    evaluation = Evaluation.first(id=evaluation_id, course_id=course_id)
+    if not evaluation:
+        return jsonify({"error": "Evaluation not found"}), 404
+
+    deadline = (request.get_json(force=True).get("deadline") or "").strip() or None
+    _, error = _validate_deadline(deadline)
+    if error:
+        return error
+
+    evaluation.update(**_deadline_fields_with_reopen(evaluation, deadline))
+    return jsonify(evaluation.to_dict())
 
 
 @evaluations_bp.route("/<int:evaluation_id>/close", methods=["POST"])

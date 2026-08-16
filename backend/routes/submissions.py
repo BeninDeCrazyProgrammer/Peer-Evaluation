@@ -16,6 +16,24 @@ def _valid_pin_format(pin):
     return isinstance(pin, str) and len(pin) == 4 and pin.isdigit()
 
 
+def _find_evaluation_or_error(course_id, evaluation_id):
+    """
+    Every student-facing route needs this first: 404 if the evaluation
+    doesn't exist, 403 (with the same message students see in the UI) if
+    it's closed — either manually or because its deadline already passed.
+    check_and_close() (called inside to_dict()/here via the model) is what
+    actually flips a stale "open" status once the deadline is reached, so
+    this needs to happen through the model, not a raw status-column read.
+    """
+    evaluation = Evaluation.first(id=evaluation_id, course_id=course_id)
+    if not evaluation:
+        return None, (jsonify({"error": "Evaluation not found"}), 404)
+    evaluation.check_and_close()
+    if evaluation.status == "closed":
+        return None, (jsonify({"error": "Peer evaluation has closed", "closed": True}), 403)
+    return evaluation, None
+
+
 def _find_student_or_error(course_id, identifier):
     """
     Wraps Student.find_in_course for the three routes below: returns
@@ -45,6 +63,10 @@ def identify(course_id, evaluation_id):
     "create your PIN" or "enter your PIN" form next. Doesn't touch scores
     or reveal groupmates — that only happens after /lookup succeeds.
     """
+    _, error = _find_evaluation_or_error(course_id, evaluation_id)
+    if error:
+        return error
+
     data = request.get_json(force=True)
     identifier = (data.get("identifier") or "").strip()
     if not identifier:
@@ -68,6 +90,10 @@ def claim_pin(course_id, evaluation_id):
     clear it (roster > Reset PIN) if a student is legitimately locked out.
     On success, behaves like /lookup and returns the peer list right away.
     """
+    _, error = _find_evaluation_or_error(course_id, evaluation_id)
+    if error:
+        return error
+
     data = request.get_json(force=True)
     identifier = (data.get("identifier") or "").strip()
     pin = (data.get("pin") or "").strip()
@@ -98,6 +124,10 @@ def lookup(course_id, evaluation_id):
     group's other members (self excluded), and 409s if they've already
     submitted this evaluation.
     """
+    _, error = _find_evaluation_or_error(course_id, evaluation_id)
+    if error:
+        return error
+
     data = request.get_json(force=True)
     identifier = (data.get("identifier") or "").strip()
     pin = (data.get("pin") or "").strip()
@@ -145,6 +175,10 @@ def submit(course_id, evaluation_id):
     Every (peer x criterion) combination is expected — validated for completeness
     and that every score is a legal value on this evaluation's scale.
     """
+    _, error = _find_evaluation_or_error(course_id, evaluation_id)
+    if error:
+        return error
+
     data = request.get_json(force=True)
     evaluator_id = data.get("evaluator_student_id")
     pin = (data.get("pin") or "").strip()

@@ -15,6 +15,7 @@ update/delete). Anything that needs a JOIN or an aggregate lives as a named
 classmethod near the model it's most about (e.g. Group.with_students,
 Evaluation.results) so it stays a one-line call from the route.
 """
+from datetime import datetime, timezone
 from werkzeug.security import generate_password_hash, check_password_hash
 from db import execute, batch
 
@@ -65,6 +66,7 @@ SCHEMA = [
         course_id   INTEGER NOT NULL REFERENCES courses(id),
         title       TEXT NOT NULL,
         status      TEXT NOT NULL DEFAULT 'open',   -- 'open' | 'closed'
+        deadline    TEXT,                            -- ISO 8601 UTC; NULL = no auto-close
         created_at  TEXT NOT NULL DEFAULT (datetime('now'))
     )
     """,
@@ -134,9 +136,17 @@ def _migrate_student_pins():
         pass
 
 
+def _migrate_evaluation_deadline():
+    """One-time migration for databases created before deadlines existed."""
+    cols = [row[1] for row in execute("PRAGMA table_info(evaluations)").rows]
+    if "deadline" not in cols:
+        execute("ALTER TABLE evaluations ADD COLUMN deadline TEXT")
+
+
 def init_db():
     batch(SCHEMA)
     _migrate_student_pins()
+    _migrate_evaluation_deadline()
     print("Database schema ready.")
 
 
@@ -363,9 +373,30 @@ class Student(Model):
 
 class Evaluation(Model):
     table = "evaluations"
-    columns = ("id", "course_id", "title", "status", "created_at")
+    columns = ("id", "course_id", "title", "status", "deadline", "created_at")
+
+    def check_and_close(self):
+        """
+        If a deadline is set and has passed while status is still 'open',
+        persist the close right now. Called from to_dict()/to_full_dict(), so
+        every read path (lecturer's list, the public student-facing fetch)
+        auto-flips a stale "open" status without needing a background job —
+        the next person to look at it is what triggers the update.
+        """
+        if self.status == "open" and self.deadline:
+            try:
+                deadline_dt = datetime.fromisoformat(self.deadline.replace("Z", "+00:00"))
+            except ValueError:
+                return  # malformed deadline shouldn't crash a read — just skip auto-close
+            if datetime.now(timezone.utc) >= deadline_dt:
+                self.update(status="closed")
+
+    def to_dict(self):
+        self.check_and_close()
+        return super().to_dict()
 
     def to_full_dict(self):
+        self.check_and_close()
         d = self.to_dict()
         d["criteria"] = [c.to_dict() for c in EvaluationCriterion.where(order_by="sort_order", evaluation_id=self.id)]
         d["scale"] = [s.to_dict() for s in EvaluationScale.where(order_by="value", evaluation_id=self.id)]
