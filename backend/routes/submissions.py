@@ -241,22 +241,45 @@ def submit(course_id, evaluation_id):
     # row on its own with only some of its scores — that would both corrupt
     # this student's data and permanently lock them out of resubmitting,
     # since submissions are one-per-student with no reset.
+    #
+    # The scores INSERT deliberately does NOT use last_insert_rowid() per
+    # row: that function reflects the single most recent insert on the
+    # connection, full stop — it updates after every statement, including
+    # each score row this same loop would insert. With more than one score
+    # (i.e. almost always), row 2 would pick up row 1's own id instead of
+    # the submission's, row 3 would pick up row 2's, and so on, silently
+    # writing wrong submission_id values with no error (foreign keys are
+    # off by default on Turso, same as SQLite generally, so nothing catches
+    # this at write time). Looking the id up by its actual unique key
+    # (evaluation_id, evaluator_student_id) inside the same statement, once,
+    # sidesteps the whole problem — it's the same row regardless of how many
+    # other inserts happen around it in this transaction. (SQLite's VALUES
+    # table doesn't support naming its own columns — `v.column1/2/3` are its
+    # auto-generated names, not something defined here.)
+    scores_values_sql = ", ".join(["(?, ?, ?)"] * len(scores))
+    scores_args = []
+    for s in scores:
+        scores_args.extend([s["ratee_student_id"], s["criterion_id"], s["score"]])
+
     statements = [
         (
             "INSERT INTO submissions (evaluation_id, evaluator_student_id) VALUES (?, ?)",
             [evaluation_id, evaluator_id],
-        )
-    ]
-    for s in scores:
-        statements.append((
+        ),
+        (
             "INSERT INTO submission_scores (submission_id, ratee_student_id, criterion_id, score) "
-            "VALUES (last_insert_rowid(), ?, ?, ?)",
-            [s["ratee_student_id"], s["criterion_id"], s["score"]],
-        ))
+            "SELECT (SELECT id FROM submissions WHERE evaluation_id = ? AND evaluator_student_id = ?), "
+            "v.column1, v.column2, v.column3 "
+            f"FROM (VALUES {scores_values_sql}) AS v",
+            [evaluation_id, evaluator_id] + scores_args,
+        ),
+    ]
 
     try:
         batch_execute(statements)
-    except Exception:
+    except Exception as e:
+        print(f"SUBMIT BATCH ERROR — course={course_id} evaluation={evaluation_id} "
+              f"evaluator={evaluator_id} scores={len(scores)}: {e!r}")
         return jsonify({"error": "Something went wrong saving your submission. Please try again."}), 500
 
     return jsonify({"message": "Submitted — thank you!"}), 201

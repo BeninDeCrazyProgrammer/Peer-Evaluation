@@ -208,7 +208,11 @@ def batch_execute(statements):
     conn = get_connection()
     if hasattr(conn, "execute_batch"):
         # TursoHTTPConnection: one pipeline request, real atomicity (see there).
-        conn.execute_batch(statements)
+        try:
+            conn.execute_batch(statements)
+        except Exception as e:
+            print(f"SQL BATCH EXECUTION ERROR (Turso): {e}")
+            raise
         return
     # Local libsql connection: explicit transaction, rolled back on any error.
     try:
