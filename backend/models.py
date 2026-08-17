@@ -17,7 +17,7 @@ Evaluation.results) so it stays a one-line call from the route.
 """
 from datetime import datetime, timezone
 from werkzeug.security import generate_password_hash, check_password_hash
-from db import execute, batch
+from db import execute, batch, batch_execute
 
 
 # --------------------------------------------------------------------------
@@ -248,6 +248,71 @@ class Course(Model):
     def owned_by_id(cls, course_id, lecturer_id):
         """True if this course exists and belongs to this lecturer."""
         return cls.exists(id=course_id, lecturer_id=lecturer_id)
+
+    @classmethod
+    def name_taken(cls, lecturer_id, name):
+        """
+        Case/whitespace-insensitive duplicate check within one lecturer's own
+        courses. Doesn't block the same name across different lecturers —
+        two people teaching different sections of "BME 208" is normal; the
+        same lecturer creating "BME 208" six times over (e.g. from a
+        double-clicked create button before this had a duplicate check) isn't.
+        """
+        rs = execute(
+            "SELECT 1 FROM courses WHERE lecturer_id = ? AND LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1",
+            [lecturer_id, name],
+        )
+        return len(rs.rows) > 0
+
+    def delete_cascade(self):
+        """
+        Deletes this course and everything under it: groups, students,
+        evaluations, criteria, scale, submissions, and submission scores.
+        There's no ON DELETE CASCADE on these foreign keys (see the CREATE
+        TABLE statements above), so this deletes bottom-up by hand — deepest
+        dependents first — as one atomic batch. Irreversible; the caller
+        (the route) is responsible for getting explicit confirmation before
+        calling this.
+        """
+        cid = self.id
+        statements = [
+            (
+                "DELETE FROM submission_scores WHERE submission_id IN ("
+                "  SELECT sub.id FROM submissions sub"
+                "  JOIN evaluations e ON e.id = sub.evaluation_id"
+                "  WHERE e.course_id = ?"
+                ")",
+                [cid],
+            ),
+            (
+                "DELETE FROM submissions WHERE evaluation_id IN ("
+                "  SELECT id FROM evaluations WHERE course_id = ?"
+                ")",
+                [cid],
+            ),
+            (
+                "DELETE FROM evaluation_scale WHERE evaluation_id IN ("
+                "  SELECT id FROM evaluations WHERE course_id = ?"
+                ")",
+                [cid],
+            ),
+            (
+                "DELETE FROM evaluation_criteria WHERE evaluation_id IN ("
+                "  SELECT id FROM evaluations WHERE course_id = ?"
+                ")",
+                [cid],
+            ),
+            ("DELETE FROM evaluations WHERE course_id = ?", [cid]),
+            (
+                "DELETE FROM students WHERE group_id IN ("
+                "  SELECT id FROM groups WHERE course_id = ?"
+                ")",
+                [cid],
+            ),
+            ("DELETE FROM groups WHERE course_id = ?", [cid]),
+            ("DELETE FROM courses WHERE id = ?", [cid]),
+        ]
+        batch_execute(statements)
 
 
 class Group(Model):
