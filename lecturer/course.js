@@ -38,8 +38,8 @@ const createRow = (type, value = "", label = "") => {
         `;
     } else {
         div.innerHTML = `
-            <input type="number" class="scale-value w-16 p-2 rounded-lg bg-slate-50 border border-slate-200 text-sm focus:border-orange-600 outline-none" value="${value}" placeholder="0">
-            <input type="text" class="scale-label flex-1 p-2 rounded-lg bg-slate-50 border border-slate-200 text-sm focus:border-orange-600 outline-none" value="${label}" placeholder="Label">
+            <input type="text" class="scale-label flex-1 min-w-0 p-2 rounded-lg bg-slate-50 border border-slate-200 text-sm focus:border-orange-600 outline-none" value="${label}" placeholder="Label">
+            <input type="number" class="scale-value w-16 shrink-0 p-2 rounded-lg bg-slate-50 border border-slate-200 text-sm focus:border-orange-600 outline-none" value="${value}" placeholder="0">
             <button class="p-2 text-slate-300 hover:text-red-500 transition-colors remove-row"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
         `;
     }
