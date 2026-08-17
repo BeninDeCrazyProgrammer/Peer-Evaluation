@@ -26,6 +26,7 @@ async function refreshData() {
     renderKPIs(completion, globalData);
     renderCompletionGrid(completion);
     renderAveragesTable(globalData);
+    renderRankings(globalData);
 }
 
 function renderKPIs(completion, results) {
@@ -42,9 +43,16 @@ function renderKPIs(completion, results) {
     // criteria), so this stays a small, comparable number even though the table's
     // "Total" column below is a sum, not an average.
     const numCriteria = results.criteria.length || 1;
-    const avgs = results.aggregates.map(a => a.total).filter(v => v !== null).map(t => t / numCriteria);
+    const totals = results.aggregates.map(a => a.total).filter(v => v !== null);
+    const avgs = totals.map(t => t / numCriteria);
     const classAvg = avgs.length > 0 ? (avgs.reduce((a, b) => a + b, 0) / avgs.length).toFixed(2) : "0.00";
     document.getElementById("statAvg").textContent = classAvg;
+
+    // 2b. Total Class Average — plain mean of the Total column itself (not
+    // divided by criteria count), so it reads on the same scale as the
+    // "Total" badges in the table/Rankings below.
+    const totalClassAvg = totals.length > 0 ? (totals.reduce((a, b) => a + b, 0) / totals.length).toFixed(2) : "0.00";
+    document.getElementById("statTotalAvg").textContent = totalClassAvg;
 
     // 3. Conflict detection (Simple logic: if a student's criteria have a spread > 2)
     let conflicts = 0;
@@ -126,6 +134,42 @@ function renderAveragesTable(data) {
         `;
     }).join('');
 }
+
+let currentRankFilter = "top"; // "top" or "bottom", persists across data refreshes
+
+function renderRankings(data) {
+    const body = document.getElementById("rankingBody");
+    const ranked = data.aggregates
+        .filter(s => s.total !== null)
+        .slice()
+        .sort((a, b) => currentRankFilter === "top" ? b.total - a.total : a.total - b.total)
+        .slice(0, 10);
+
+    if (ranked.length === 0) {
+        body.innerHTML = `<tr><td colspan="4" class="p-12 text-center text-slate-400">No submissions yet.</td></tr>`;
+        return;
+    }
+
+    body.innerHTML = ranked.map((s, i) => `
+        <tr class="hover:bg-slate-50/50 transition-colors">
+            <td class="p-4 font-bold text-slate-400">${i + 1}</td>
+            <td class="p-4 font-bold text-slate-800">${s.name}</td>
+            <td class="p-4 text-slate-500">${s.group_label ?? "—"}</td>
+            <td class="p-4 text-center">
+                <span class="px-3 py-1 bg-slate-900 text-white rounded-full text-xs font-bold">${s.total}</span>
+            </td>
+        </tr>
+    `).join('');
+}
+
+document.querySelectorAll("#rankingFilter .ranking-filter-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+        currentRankFilter = btn.dataset.rank;
+        document.querySelectorAll("#rankingFilter .ranking-filter-btn").forEach(b => b.classList.toggle("is-active", b === btn));
+        if (globalData) renderRankings(globalData);
+    });
+});
+document.querySelector(`#rankingFilter .ranking-filter-btn[data-rank="${currentRankFilter}"]`).classList.add("is-active");
 
 // THE DRILL-DOWN LOGIC
 function openDrawer(studentName) {

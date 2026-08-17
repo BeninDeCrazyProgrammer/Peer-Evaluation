@@ -454,11 +454,12 @@ class Evaluation(Model):
         individual_scores = [dict(zip(detail_rs.columns, row)) for row in detail_rs.rows]
 
         agg_rs = execute(
-            "SELECT rt_s.id AS ratee_id, rt_s.name AS ratee_name, ec.id AS criterion_id, "
-            "       ec.name AS criterion, AVG(sc.score) AS avg_score, COUNT(sc.score) AS num_ratings "
+            "SELECT rt_s.id AS ratee_id, rt_s.name AS ratee_name, g.group_label AS group_label, "
+            "       ec.id AS criterion_id, ec.name AS criterion, AVG(sc.score) AS avg_score, COUNT(sc.score) AS num_ratings "
             "FROM submission_scores sc "
             "JOIN submissions sub ON sub.id = sc.submission_id "
             "JOIN students rt_s ON rt_s.id = sc.ratee_student_id "
+            "JOIN groups g ON g.id = rt_s.group_id "
             "JOIN evaluation_criteria ec ON ec.id = sc.criterion_id "
             "WHERE sub.evaluation_id = ? "
             "GROUP BY rt_s.id, ec.id "
@@ -470,7 +471,10 @@ class Evaluation(Model):
             r = dict(zip(agg_rs.columns, row))
             student = students_agg.setdefault(
                 r["ratee_id"],
-                {"student_id": r["ratee_id"], "name": r["ratee_name"], "by_criterion": [], "total": None},
+                {
+                    "student_id": r["ratee_id"], "name": r["ratee_name"], "group_label": r["group_label"],
+                    "by_criterion": [], "total": None,
+                },
             )
             student["by_criterion"].append({
                 "criterion": r["criterion"], "average": round(r["avg_score"], 2), "num_ratings": r["num_ratings"],
