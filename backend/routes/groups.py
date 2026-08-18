@@ -24,6 +24,15 @@ def upload_groups(course_id, class_id):
     if not _assert_owns_class(course_id, class_id):
         return jsonify({"error": "Class not found"}), 404
 
+    cls = Class.find(class_id)
+    if cls.has_submissions():
+        return jsonify({
+            "error": "This class already has evaluation submissions recorded, so its roster can't be replaced — "
+                     "doing so would silently disconnect those submissions from the students who made them. "
+                     "If you need to fix one student's details, or the roster genuinely needs to change mid-evaluation, "
+                     "let the developer know rather than re-uploading."
+        }), 409
+
     if "file" not in request.files:
         return jsonify({"error": "No file uploaded — send it as multipart/form-data under 'file'"}), 400
 

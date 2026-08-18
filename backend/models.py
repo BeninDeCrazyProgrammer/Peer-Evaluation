@@ -391,6 +391,22 @@ class Class(Model):
         )
         return len(rs.rows) > 0
 
+    def has_submissions(self):
+        """
+        True if any evaluation under this class has at least one submission.
+        Used to block operations — specifically re-uploading the roster —
+        that would otherwise silently corrupt real student data: see
+        Group.replace_all's docstring for exactly what goes wrong if a
+        roster with existing submissions gets wiped and recreated.
+        """
+        rs = execute(
+            "SELECT 1 FROM submissions sub "
+            "JOIN evaluations e ON e.id = sub.evaluation_id "
+            "WHERE e.class_id = ? LIMIT 1",
+            [self.id],
+        )
+        return len(rs.rows) > 0
+
     def delete_cascade(self):
         """
         Deletes this class and everything under it: groups, students, and
@@ -474,27 +490,56 @@ class Group(Model):
     @classmethod
     def replace_all(cls, class_id, course_id, parsed_groups):
         """
-        Wipe THIS CLASS's groups/students and re-create them from
-        parsed_groups. Scoped to class_id, not course_id — a course can have
-        several classes (year groups/sections) now, each with its own
-        independent roster, so re-uploading a sheet for one class must never
-        touch another class's groups even though they share a course.
-        course_id is still stored on each new group (denormalized) purely so
-        existing course-wide queries don't need a join through classes.
-        """
-        for g in cls.where(class_id=class_id):
-            Student.delete_where(group_id=g.id)
-        cls.delete_where(class_id=class_id)
+        Atomically wipe THIS CLASS's groups/students and re-create them from
+        parsed_groups, as a single batch — either the whole roster replaces
+        cleanly or nothing changes.
 
-        created = []
+        Callers MUST check Class.has_submissions() first and refuse to call
+        this if it's True. This function deletes every existing student row
+        in the class and creates brand-new rows with brand-new ids — it has
+        no way to know "this new row is really the same person as that old
+        row", so if any submission already references an old student id (as
+        evaluator or ratee), that submission silently orphans: it vanishes
+        from completion()/results()/exports (which all JOIN through
+        students), and the real person now looks like they've never
+        submitted, free to submit again under their new id. This is a full
+        replace, not a merge, by design — merging safely (matching by
+        student_id, preserving history) is a larger feature this doesn't
+        attempt.
+
+        Scoped to class_id, not course_id — a course can have several
+        classes (year groups/sections) now, each with its own independent
+        roster, so re-uploading a sheet for one class must never touch
+        another class's groups even though they share a course. course_id
+        is still stored on each new group (denormalized) purely so existing
+        course-wide queries don't need a join through classes.
+
+        Student rows are linked to their group via a correlated subquery
+        ("the most recently created group in this class") rather than
+        last_insert_rowid() — last_insert_rowid() tracks the single most
+        recent insert of ANY kind on the connection, so it drifts to the
+        wrong value after the first student of a group (it would end up
+        pointing at the previous student's row, not the group's). The
+        subquery stays correct across a whole group's students because
+        inserting a student never creates a new row in groups.
+        """
+        statements = [
+            ("DELETE FROM students WHERE group_id IN (SELECT id FROM groups WHERE class_id = ?)", [class_id]),
+            ("DELETE FROM groups WHERE class_id = ?", [class_id]),
+        ]
         for g in parsed_groups:
-            group = cls.create(course_id=course_id, class_id=class_id, group_label=g["group_label"])
-            students = [
-                Student.create(group_id=group.id, name=s["name"], student_id=s["student_id"]).to_dict()
-                for s in g["students"]
-            ]
-            created.append({"id": group.id, "group_label": group.group_label, "students": students})
-        return created
+            statements.append((
+                "INSERT INTO groups (course_id, class_id, group_label) VALUES (?, ?, ?)",
+                [course_id, class_id, g["group_label"]],
+            ))
+            for s in g["students"]:
+                statements.append((
+                    "INSERT INTO students (group_id, name, student_id) "
+                    "VALUES ((SELECT id FROM groups WHERE class_id = ? ORDER BY id DESC LIMIT 1), ?, ?)",
+                    [class_id, s["name"], s["student_id"]],
+                ))
+        batch_execute(statements)
+        return cls.with_students(class_id)
 
 
 class AmbiguousStudentError(Exception):
@@ -599,8 +644,7 @@ class Evaluation(Model):
         return super().to_dict()
 
     def to_full_dict(self):
-        self.check_and_close()
-        d = self.to_dict()
+        d = self.to_dict()  # already calls check_and_close() — no need to call it again here
         d["criteria"] = [c.to_dict() for c in EvaluationCriterion.where(order_by="sort_order", evaluation_id=self.id)]
         d["scale"] = [s.to_dict() for s in EvaluationScale.where(order_by="value", evaluation_id=self.id)]
         return d
