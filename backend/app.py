@@ -7,6 +7,7 @@ load_dotenv()
 
 from auth import auth_bp, init_auth
 from routes.courses import courses_bp
+from routes.classes import classes_bp
 from routes.groups import groups_bp
 from routes.evaluations import evaluations_bp
 from routes.submissions import submissions_bp
@@ -81,6 +82,7 @@ def create_app():
     # Register Blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(courses_bp)
+    app.register_blueprint(classes_bp)
     app.register_blueprint(groups_bp)
     app.register_blueprint(evaluations_bp)
     app.register_blueprint(submissions_bp)

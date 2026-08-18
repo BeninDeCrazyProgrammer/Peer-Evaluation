@@ -7,7 +7,7 @@ from flask import Blueprint, request, jsonify
 from flask_login import login_required
 import qrcode
 
-from models import Evaluation, Submission
+from models import Evaluation, Submission, Class
 from routes.courses import _assert_owns_course
 
 evaluations_bp = Blueprint("evaluations", __name__, url_prefix="/courses/<int:course_id>/evaluations")
@@ -62,18 +62,28 @@ def _deadline_fields_with_reopen(evaluation, deadline):
 @login_required
 def create_evaluation(course_id):
     """
-    Body: {"title": "...", "criteria": ["Participation", ...], "scale": [{"value": 0, "label": "Unacceptable"}, ...]}
+    Body: {"class_id": 3, "title": "...", "criteria": ["Participation", ...], "scale": [{"value": 0, "label": "Unacceptable"}, ...]}
     Both criteria and scale are fully lecturer-defined — nothing is hardcoded.
+    class_id picks which class's roster this evaluation runs against; a
+    course can now have more than one class (year group/section), so this
+    is required and fixed at creation — see Class in models.py.
     """
     if not _assert_owns_course(course_id):
         return jsonify({"error": "Course not found"}), 404
 
-    parsed, error = _validate_payload(request.get_json(force=True))
+    data = request.get_json(force=True)
+    class_id = data.get("class_id")
+    if not class_id:
+        return jsonify({"error": "Select a class for this evaluation"}), 400
+    if not Class.exists(id=class_id, course_id=course_id):
+        return jsonify({"error": "Class not found in this course"}), 404
+
+    parsed, error = _validate_payload(data)
     if error:
         return error
     title, criteria, scale, deadline = parsed
 
-    evaluation = Evaluation.create(course_id=course_id, title=title, deadline=deadline)
+    evaluation = Evaluation.create(course_id=course_id, class_id=class_id, title=title, deadline=deadline)
     evaluation.set_criteria_and_scale(criteria, scale)
     return jsonify(evaluation.to_dict()), 201
 
@@ -84,7 +94,13 @@ def list_evaluations(course_id):
     if not _assert_owns_course(course_id):
         return jsonify({"error": "Course not found"}), 404
     evals = Evaluation.where(order_by="created_at DESC", course_id=course_id)
-    return jsonify([e.to_dict() for e in evals])
+    classes_by_id = {c.id: c.name for c in Class.where(course_id=course_id)}
+    result = []
+    for e in evals:
+        d = e.to_dict()
+        d["class_name"] = classes_by_id.get(e.class_id)
+        result.append(d)
+    return jsonify(result)
 
 
 @evaluations_bp.route("/<int:evaluation_id>", methods=["GET"])

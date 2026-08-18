@@ -34,22 +34,22 @@ def _find_evaluation_or_error(course_id, evaluation_id):
     return evaluation, None
 
 
-def _find_student_or_error(course_id, identifier):
+def _find_student_or_error(class_id, identifier):
     """
-    Wraps Student.find_in_course for the three routes below: returns
+    Wraps Student.find_in_class for the three routes below: returns
     (student, None) on a clean match, or (None, (response, status)) if the
     caller should return early — either nobody matched, or more than one
     student did (see AmbiguousStudentError's docstring in models.py).
     """
     try:
-        student = Student.find_in_course(course_id, identifier)
+        student = Student.find_in_class(class_id, identifier)
     except AmbiguousStudentError:
         return None, (jsonify({
             "error": "More than one student matches that. If you used your name, try your student ID instead — "
                      "if your ID doesn't work either, ask your lecturer to check the roster for a duplicate ID."
         }), 409)
     if not student:
-        return None, (jsonify({"error": "We couldn't find you in this course's groups. Check your ID/name and try again."}), 404)
+        return None, (jsonify({"error": "We couldn't find you in this class's groups. Check your ID/name and try again."}), 404)
     return student, None
 
 
@@ -63,7 +63,7 @@ def identify(course_id, evaluation_id):
     "create your PIN" or "enter your PIN" form next. Doesn't touch scores
     or reveal groupmates — that only happens after /lookup succeeds.
     """
-    _, error = _find_evaluation_or_error(course_id, evaluation_id)
+    evaluation, error = _find_evaluation_or_error(course_id, evaluation_id)
     if error:
         return error
 
@@ -72,7 +72,7 @@ def identify(course_id, evaluation_id):
     if not identifier:
         return jsonify({"error": "Enter your name or student ID"}), 400
 
-    student, error = _find_student_or_error(course_id, identifier)
+    student, error = _find_student_or_error(evaluation.class_id, identifier)
     if error:
         return error
 
@@ -90,7 +90,7 @@ def claim_pin(course_id, evaluation_id):
     clear it (roster > Reset PIN) if a student is legitimately locked out.
     On success, behaves like /lookup and returns the peer list right away.
     """
-    _, error = _find_evaluation_or_error(course_id, evaluation_id)
+    evaluation, error = _find_evaluation_or_error(course_id, evaluation_id)
     if error:
         return error
 
@@ -104,7 +104,7 @@ def claim_pin(course_id, evaluation_id):
     if pin != confirm_pin:
         return jsonify({"error": "PINs don't match"}), 400
 
-    student, error = _find_student_or_error(course_id, identifier)
+    student, error = _find_student_or_error(evaluation.class_id, identifier)
     if error:
         return error
     if student.has_pin():
@@ -124,7 +124,7 @@ def lookup(course_id, evaluation_id):
     group's other members (self excluded), and 409s if they've already
     submitted this evaluation.
     """
-    _, error = _find_evaluation_or_error(course_id, evaluation_id)
+    evaluation, error = _find_evaluation_or_error(course_id, evaluation_id)
     if error:
         return error
 
@@ -136,7 +136,7 @@ def lookup(course_id, evaluation_id):
     if not pin:
         return jsonify({"error": "Enter your PIN"}), 400
 
-    student, error = _find_student_or_error(course_id, identifier)
+    student, error = _find_student_or_error(evaluation.class_id, identifier)
     if error:
         return error
     if not student.has_pin():
@@ -175,7 +175,7 @@ def submit(course_id, evaluation_id):
     Every (peer x criterion) combination is expected — validated for completeness
     and that every score is a legal value on this evaluation's scale.
     """
-    _, error = _find_evaluation_or_error(course_id, evaluation_id)
+    evaluation, error = _find_evaluation_or_error(course_id, evaluation_id)
     if error:
         return error
 
@@ -191,12 +191,15 @@ def submit(course_id, evaluation_id):
 
     evaluator = Student.find(evaluator_id)
     if not evaluator:
-        return jsonify({"error": "Student not found in this course"}), 404
-    # Confirm the student's group actually belongs to this course.
+        return jsonify({"error": "Student not found in this class"}), 404
+    # Confirm the student's group actually belongs to this evaluation's class
+    # (not just the course — a course can have several classes now, each
+    # with its own roster, and a student from a different class shouldn't be
+    # able to submit against this one just by knowing another student's id).
     from models import Group
-    group = Group.first(id=evaluator.group_id, course_id=course_id)
+    group = Group.first(id=evaluator.group_id, class_id=evaluation.class_id)
     if not group:
-        return jsonify({"error": "Student not found in this course"}), 404
+        return jsonify({"error": "Student not found in this class"}), 404
     # Re-verify the PIN here too — /lookup and /submit are independent
     # requests, and this is the call that actually writes scores, so it
     # can't trust that whoever calls it already passed /lookup.
