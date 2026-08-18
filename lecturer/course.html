@@ -37,9 +37,9 @@
                     <i data-lucide="clipboard-list" class="w-5 h-5"></i>
                     <span class="font-bold text-sm">Evaluations</span>
                 </button>
-                <button class="section-nav__item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all hover:bg-slate-50" data-section="groups">
-                    <i data-lucide="users" class="w-5 h-5"></i>
-                    <span class="font-bold text-sm">Groups</span>
+                <button class="section-nav__item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all hover:bg-slate-50" data-section="classes">
+                    <i data-lucide="graduation-cap" class="w-5 h-5"></i>
+                    <span class="font-bold text-sm">Classes</span>
                 </button>
                 <div class="hidden md:block h-px bg-slate-100 my-1 mx-1"></div>
                 <button id="newEvalBtn" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all bg-orange-50 text-orange-700 hover:bg-orange-100">
@@ -78,6 +78,14 @@
                     </div>
 
                     <div class="space-y-6">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Class</label>
+                            <select id="evalClass" class="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-orange-600/20 focus:border-orange-600">
+                                <option value="">Loading classes...</option>
+                            </select>
+                            <p class="text-[11px] text-slate-400 mt-1.5" id="evalClassHint">Which class's roster this evaluation runs against. Can't be changed after creation.</p>
+                        </div>
+
                         <div class="grid sm:grid-cols-2 gap-6">
                             <div>
                                 <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Evaluation Title</label>
@@ -131,34 +139,20 @@
                 </div>
             </section>
 
-            <!-- SECTION: GROUPS -->
-            <section class="section-panel space-y-6" data-section="groups">
+            <!-- SECTION: CLASSES -->
+            <section class="section-panel space-y-6" data-section="classes">
                 <div class="bg-white rounded-3xl border border-slate-200 p-5 sm:p-8 shadow-sm">
-                    <h3 class="text-xl font-bold mb-2">Import Student Groups</h3>
-                    <p class="text-sm text-slate-500 mb-6">Upload your Excel spreadsheet with columns for <code class="bg-slate-100 px-1 rounded text-orange-600 font-bold">Group</code>, <code class="bg-slate-100 px-1 rounded text-orange-600 font-bold">Name</code>, and <code class="bg-slate-100 px-1 rounded text-orange-600 font-bold">ID</code>.</p>
-                    
-                    <div class="flex items-center justify-center w-full">
-                        <label class="flex flex-col items-center justify-center w-full h-32 border-2 border-slate-200 border-dashed rounded-2xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-all">
-                            <div class="flex flex-col items-center justify-center pt-5 pb-6">
-                                <i data-lucide="upload-cloud" class="w-8 h-8 text-slate-400 mb-2"></i>
-                                <p class="text-sm text-slate-500 font-medium" id="fileNameDisplay">Select Excel File (.xlsx, .xls)</p>
-                            </div>
-                            <input type="file" id="groupsFile" class="hidden" accept=".xlsx,.xls" />
-                        </label>
+                    <h3 class="text-xl font-bold mb-2">Classes</h3>
+                    <p class="text-sm text-slate-500 mb-4">Each class holds its own student roster and its own evaluations — use this when the same course is taught to more than one year group or section at once. A student roster and its results never cross between classes.</p>
+                    <div class="flex flex-col sm:flex-row gap-3">
+                        <input type="text" id="newClassName" placeholder="e.g. 2026 Level 300" class="flex-1 p-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-orange-600/20 focus:border-orange-600">
+                        <button class="btn btn--clay shrink-0" id="createClassBtn">+ New Class</button>
                     </div>
-
-                    <div class="flex items-center justify-between mt-6">
-                        <div id="uploadError" class="text-red-500 text-sm font-medium hidden"></div>
-                        <button class="btn btn--clay" id="uploadBtn">Sync Group List</button>
-                    </div>
+                    <div id="createClassError" class="text-red-500 text-sm font-medium hidden mt-2"></div>
                 </div>
 
-                <div class="bg-white rounded-3xl border border-slate-200 p-5 sm:p-8 shadow-sm">
-                    <h3 class="text-xl font-bold mb-1">Current Roster</h3>
-                    <p class="text-xs text-slate-400 mb-4">Students set their own PIN the first time they open the evaluation link — you never see or share it. If someone forgets theirs (or the wrong person claimed a name/ID), use <span class="font-bold text-slate-500">Reset</span> to let them set a new one.</p>
-                    <div id="groupsList" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <!-- Dynamic Groups -->
-                    </div>
+                <div id="classesList" class="space-y-3">
+                    <!-- Dynamic class cards -->
                 </div>
             </section>
 

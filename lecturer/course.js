@@ -92,9 +92,9 @@ async function loadCourseData() {
     document.getElementById("courseName").textContent = course.name;
     document.getElementById("courseCrumb").textContent = course.name;
     document.getElementById("courseEyebrow").textContent = `Course ID: ${course.id}`;
-    
+
     resetForm();
-    loadGroups();
+    await loadClasses();
     loadEvaluations();
 }
 
@@ -150,6 +150,7 @@ async function loadEvaluations() {
                             <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider shrink-0 ${isOpen ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}">
                                 ${ev.status}
                             </span>
+                            ${ev.class_name ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider shrink-0 bg-indigo-50 text-indigo-600">${ev.class_name}</span>` : ""}
                         </div>
                         <p class="text-xs text-slate-400">Created ${new Date(ev.created_at).toLocaleDateString()}${deadlineText ? ` · ${deadlineText}` : ""}</p>
                     </div>
@@ -252,6 +253,10 @@ function resetForm() {
     document.getElementById("evalDeadline").value = "";
     document.getElementById("criteriaRows").innerHTML = "";
 
+    const classSelect = document.getElementById("evalClass");
+    classSelect.disabled = false;
+    document.getElementById("evalClassHint").textContent = "Which class's roster this evaluation runs against. Can't be changed after creation.";
+
     DEFAULT_CRITERIA.forEach(c =>
         document.getElementById("criteriaRows").appendChild(createRow('criterion', c)));
 
@@ -282,6 +287,16 @@ async function startEditing(id) {
     document.getElementById("evalTitle").value = ev.title;
     document.getElementById("evalDeadline").value = toDatetimeLocalValue(ev.deadline);
 
+    // Class is fixed at creation — show which one this evaluation belongs
+    // to, but don't let it be changed here (the backend doesn't allow it).
+    const classSelect = document.getElementById("evalClass");
+    if (![...classSelect.options].some(o => o.value === String(ev.class_id))) {
+        classSelect.innerHTML = loadedClasses.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+    }
+    classSelect.value = ev.class_id;
+    classSelect.disabled = true;
+    document.getElementById("evalClassHint").textContent = "Class can't be changed after an evaluation is created.";
+
     document.getElementById("criteriaRows").innerHTML = "";
     document.getElementById("scaleRows").innerHTML = "";
     ev.criteria.forEach(c => document.getElementById("criteriaRows").appendChild(createRow('criterion', c.name)));
@@ -295,13 +310,113 @@ async function startEditing(id) {
     lucide.createIcons();
 }
 
-// Groups Logic
-let loadedGroups = [];
+// Classes Logic
+let loadedClasses = [];
+const expandedClassIds = new Set();
+const classRosterCache = {};
 
-async function loadGroups() {
-    loadedGroups = await api(`/courses/${courseId}/groups`);
-    const list = document.getElementById("groupsList");
-    list.innerHTML = loadedGroups.map(g => `
+function renderEvalClassSelect() {
+    const select = document.getElementById("evalClass");
+    const hint = document.getElementById("evalClassHint");
+    if (loadedClasses.length === 0) {
+        select.innerHTML = `<option value="">No classes yet</option>`;
+        hint.textContent = "Create a class under the Classes tab first — an evaluation always runs against one class's roster.";
+        return;
+    }
+    select.innerHTML = loadedClasses.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+}
+
+async function loadClasses() {
+    loadedClasses = await api(`/courses/${courseId}/classes`);
+    renderClassesList();
+    renderEvalClassSelect();
+}
+
+function renderClassesList() {
+    const list = document.getElementById("classesList");
+    if (loadedClasses.length === 0) {
+        list.innerHTML = `<div class="p-12 text-center border-2 border-dashed border-slate-100 rounded-3xl text-slate-400">No classes yet — create one above (e.g. "2026 Level 300") to start uploading a roster.</div>`;
+        return;
+    }
+    list.innerHTML = loadedClasses.map(cls => `
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden" data-class-card="${cls.id}">
+            <div class="p-5 flex flex-wrap items-center justify-between gap-3 cursor-pointer hover:bg-slate-50/60 transition-colors" onclick="toggleClassCard(${cls.id})">
+                <div class="flex items-center gap-3 min-w-0">
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400 shrink-0 transition-transform" data-class-chevron="${cls.id}" style="${expandedClassIds.has(cls.id) ? 'transform:rotate(90deg)' : ''}"></i>
+                    <div class="min-w-0">
+                        <h4 class="font-bold text-slate-900 truncate">${cls.name}</h4>
+                        <p class="text-xs text-slate-400">Created ${new Date(cls.created_at).toLocaleDateString()}</p>
+                    </div>
+                </div>
+                <div class="flex gap-2 shrink-0" onclick="event.stopPropagation()">
+                    <button onclick="deleteClass(${cls.id}, '${cls.name.replace(/'/g, "\\'")}')" class="btn btn--ghost btn--sm"><i data-lucide="trash-2" class="w-4 h-4"></i> Delete</button>
+                </div>
+            </div>
+            <div class="${expandedClassIds.has(cls.id) ? '' : 'hidden'} border-t border-slate-100 p-5 bg-slate-50/50 space-y-6" data-class-body="${cls.id}">
+                ${classBodyHtml(cls.id)}
+            </div>
+        </div>
+    `).join("");
+    lucide.createIcons();
+
+    // Re-render rosters for any cards that were already expanded before this reload.
+    expandedClassIds.forEach(id => loadClassRoster(id));
+}
+
+function classBodyHtml(classId) {
+    return `
+        <div class="bg-white rounded-2xl border border-slate-200 p-5">
+            <h5 class="font-bold text-slate-800 text-sm mb-2">Import Student Groups</h5>
+            <p class="text-xs text-slate-500 mb-4">Upload an Excel sheet with columns for <code class="bg-slate-100 px-1 rounded text-orange-600 font-bold">Group</code>, <code class="bg-slate-100 px-1 rounded text-orange-600 font-bold">Name</code>, and <code class="bg-slate-100 px-1 rounded text-orange-600 font-bold">ID</code>. Re-uploading replaces this class's roster only — other classes are untouched.</p>
+            <div class="flex items-center justify-center w-full">
+                <label class="flex flex-col items-center justify-center w-full h-24 border-2 border-slate-200 border-dashed rounded-2xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-all">
+                    <div class="flex flex-col items-center justify-center pt-3 pb-4">
+                        <i data-lucide="upload-cloud" class="w-6 h-6 text-slate-400 mb-1"></i>
+                        <p class="text-xs text-slate-500 font-medium" data-class-filename="${classId}">Select Excel File (.xlsx, .xls)</p>
+                    </div>
+                    <input type="file" class="hidden class-file-input" data-class-id="${classId}" accept=".xlsx,.xls" />
+                </label>
+            </div>
+            <div class="flex items-center justify-between mt-4">
+                <div class="text-red-500 text-xs font-medium hidden" data-class-upload-error="${classId}"></div>
+                <button class="btn btn--clay btn--sm class-upload-btn" data-class-id="${classId}">Sync Group List</button>
+            </div>
+        </div>
+        <div>
+            <h5 class="font-bold text-slate-800 text-sm mb-1">Current Roster</h5>
+            <p class="text-xs text-slate-400 mb-3">Students set their own PIN the first time they open the evaluation link — you never see or share it. If someone forgets theirs (or the wrong person claimed a name/ID), use <span class="font-bold text-slate-500">Reset</span> to let them set a new one.</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3" data-class-roster="${classId}">
+                <p class="text-xs text-slate-400">Loading...</p>
+            </div>
+        </div>
+    `;
+}
+
+function toggleClassCard(id) {
+    const body = document.querySelector(`[data-class-body="${id}"]`);
+    const chevron = document.querySelector(`[data-class-chevron="${id}"]`);
+    if (expandedClassIds.has(id)) {
+        expandedClassIds.delete(id);
+        body.classList.add("hidden");
+        chevron.style.transform = "";
+        return;
+    }
+    expandedClassIds.add(id);
+    body.classList.remove("hidden");
+    chevron.style.transform = "rotate(90deg)";
+    loadClassRoster(id);
+}
+
+async function loadClassRoster(classId) {
+    const groups = await api(`/courses/${courseId}/classes/${classId}/groups`);
+    classRosterCache[classId] = groups;
+    const container = document.querySelector(`[data-class-roster="${classId}"]`);
+    if (!container) return;
+    if (groups.length === 0) {
+        container.innerHTML = `<p class="text-xs text-slate-400">No roster uploaded yet.</p>`;
+        return;
+    }
+    container.innerHTML = groups.map(g => `
         <div class="p-4 bg-slate-50 rounded-2xl border border-slate-100">
             <h5 class="font-bold text-slate-800 text-sm mb-2">${g.group_label}</h5>
             <div class="space-y-1">
@@ -311,7 +426,7 @@ async function loadGroups() {
                         <span class="flex items-center gap-2 shrink-0">
                             ${s.pin_set
                                 ? `<span class="text-[10px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">PIN set</span>
-                                   <button onclick="resetStudentPin(${s.id}, '${s.name.replace(/'/g, "\\'")}')" class="text-[10px] font-bold text-slate-400 hover:text-red-600 uppercase">Reset</button>`
+                                   <button onclick="resetStudentPin(${classId}, ${s.id}, '${s.name.replace(/'/g, "\\'")}')" class="text-[10px] font-bold text-slate-400 hover:text-red-600 uppercase">Reset</button>`
                                 : `<span class="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Not set yet</span>`}
                         </span>
                     </div>
@@ -324,38 +439,78 @@ async function loadGroups() {
 // Students create their own PIN the first time they open the evaluation
 // link — the lecturer never sees or distributes it. The only lecturer-side
 // lever is resetting it (forgotten PIN, or the wrong person claimed it).
-async function resetStudentPin(studentId, name) {
+async function resetStudentPin(classId, studentId, name) {
     if (!confirm(`Reset the PIN for ${name}? They'll be asked to set a new one next time they open the evaluation link.`)) return;
     try {
-        await api(`/courses/${courseId}/groups/students/${studentId}/reset-pin`, { method: "POST" });
-        loadGroups();
+        await api(`/courses/${courseId}/classes/${classId}/groups/students/${studentId}/reset-pin`, { method: "POST" });
+        loadClassRoster(classId);
     } catch (err) {
         alert(err.message || "Couldn't reset PIN.");
     }
 }
 
-// File Upload Handler
-document.getElementById("groupsFile").addEventListener("change", (e) => {
-    const name = e.target.files[0]?.name || "Select Excel File (.xlsx, .xls)";
-    document.getElementById("fileNameDisplay").textContent = name;
+async function deleteClass(classId, name) {
+    if (!confirm(`Delete "${name}"? This permanently removes its roster (groups and students) and every evaluation created for it, along with all their submissions. This can't be undone.`)) return;
+    try {
+        await api(`/courses/${courseId}/classes/${classId}`, { method: "DELETE" });
+        expandedClassIds.delete(classId);
+        delete classRosterCache[classId];
+        await loadClasses();
+        loadEvaluations(); // that class's evaluations are gone too
+    } catch (err) {
+        alert(err.message || "Couldn't delete class.");
+    }
+}
+
+document.getElementById("createClassBtn").addEventListener("click", async () => {
+    const input = document.getElementById("newClassName");
+    const name = input.value.trim();
+    const errorBox = document.getElementById("createClassError");
+    hideError(errorBox);
+    if (!name) { showError(errorBox, new Error("Class name is required.")); return; }
+    try {
+        await api(`/courses/${courseId}/classes`, { method: "POST", body: JSON.stringify({ name }) });
+        input.value = "";
+        await loadClasses();
+    } catch (err) {
+        showError(errorBox, err);
+    }
 });
 
-document.getElementById("uploadBtn").addEventListener("click", async () => {
-    const fileInput = document.getElementById("groupsFile");
-    if (!fileInput.files[0]) return;
+// Event delegation for per-class upload controls — these are rendered
+// dynamically (one set per class card), so a single document-level listener
+// keyed off data-class-id handles all of them instead of re-binding after
+// every render.
+document.addEventListener("change", (e) => {
+    if (!e.target.classList.contains("class-file-input")) return;
+    const classId = e.target.dataset.classId;
+    const name = e.target.files[0]?.name || "Select Excel File (.xlsx, .xls)";
+    const label = document.querySelector(`[data-class-filename="${classId}"]`);
+    if (label) label.textContent = name;
+});
+
+document.addEventListener("click", async (e) => {
+    const btn = e.target.closest(".class-upload-btn");
+    if (!btn) return;
+    const classId = btn.dataset.classId;
+    const fileInput = document.querySelector(`.class-file-input[data-class-id="${classId}"]`);
+    const errorBox = document.querySelector(`[data-class-upload-error="${classId}"]`);
+    hideError(errorBox);
+    if (!fileInput.files[0]) { showError(errorBox, new Error("Choose a file first.")); return; }
     const form = new FormData();
     form.append("file", fileInput.files[0]);
     try {
-        await api(`/courses/${courseId}/groups/upload`, { method: "POST", body: form });
-        loadGroups();
+        await api(`/courses/${courseId}/classes/${classId}/groups/upload`, { method: "POST", body: form });
+        loadClassRoster(classId);
         alert("Groups updated successfully!");
     } catch (err) {
-        showError(document.getElementById("uploadError"), err);
+        showError(errorBox, err);
     }
 });
 
 // Create/Update Evaluation
 document.getElementById("createEvalBtn").addEventListener("click", async () => {
+    const classId = document.getElementById("evalClass").value;
     const title = document.getElementById("evalTitle").value.trim();
     const deadline = fromDatetimeLocalValue(document.getElementById("evalDeadline").value);
     const criteria = [...document.querySelectorAll(".criterion-input")]
@@ -370,12 +525,15 @@ document.getElementById("createEvalBtn").addEventListener("click", async () => {
 
     const errorBox = document.getElementById("evalError");
     hideError(errorBox);
+    const editedId = editingEvalId;
+    if (!editedId && !classId) { showError(errorBox, new Error("Select a class for this evaluation — create one under the Classes tab if there isn't one yet.")); return; }
     if (!title) { showError(errorBox, new Error("Title is required.")); return; }
     if (criteria.length < 1) { showError(errorBox, new Error("Add at least one criterion.")); return; }
     if (scale.length < 2) { showError(errorBox, new Error("The scale needs at least 2 points with a value and a label.")); return; }
 
-    const payload = { title, criteria, scale, deadline };
-    const editedId = editingEvalId;
+    // class_id is fixed at creation and immutable afterward (the select is
+    // disabled while editing — see startEditing), so it's only sent on create.
+    const payload = editedId ? { title, criteria, scale, deadline } : { class_id: classId, title, criteria, scale, deadline };
 
     try {
         const method = editedId ? "PATCH" : "POST";
