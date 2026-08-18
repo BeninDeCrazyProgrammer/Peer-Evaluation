@@ -6,7 +6,7 @@ if (!courseId || !evalId) window.location.href = "dashboard.html";
 initSections();
 document.getElementById("backLink").href = `course.html?course=${courseId}`;
 document.getElementById("backLinkMobile").href = `course.html?course=${courseId}`;
-document.getElementById("exportBtn").href = `${API_BASE}/courses/${courseId}/evaluations/${evalId}/results/export.csv`;
+document.getElementById("exportBtn").href = `${API_BASE}/courses/${courseId}/evaluations/${evalId}/results/export.xlsx`;
 
 let globalData = null; // Store results for drilling
 let globalCompletion = null; // Store roster/submission status for the matrix
