@@ -180,8 +180,9 @@
                     <span id="shareLink" class="text-xs font-mono text-slate-500 truncate"></span>
                     <button onclick="copyLink()" class="text-orange-600 font-bold text-xs uppercase shrink-0">Copy</button>
                 </div>
-                <div class="flex justify-center p-4 bg-white rounded-2xl border border-slate-100 shadow-inner">
+                <div class="flex flex-col items-center gap-4 p-4 bg-white rounded-2xl border border-slate-100 shadow-inner">
                     <img id="qrImage" src="" alt="QR Code" class="w-48 h-48">
+                    <button onclick="downloadQr()" class="btn btn--ghost btn--sm"><i data-lucide="download" class="w-4 h-4"></i> Download QR Code</button>
                 </div>
             </div>
         </div>

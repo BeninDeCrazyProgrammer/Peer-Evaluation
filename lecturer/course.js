@@ -157,7 +157,7 @@ async function loadEvaluations() {
                     </div>
                 </div>
                 <div class="flex gap-2 shrink-0" onclick="event.stopPropagation()">
-                    <button onclick="openModal(${ev.id})" class="btn btn--ghost btn--sm"><i data-lucide="share-2" class="w-4 h-4"></i> Share</button>
+                    <button onclick="openModal(${ev.id}, '${ev.title.replace(/'/g, "\\'")}')" class="btn btn--ghost btn--sm"><i data-lucide="share-2" class="w-4 h-4"></i> Share</button>
                     <a href="results.html?course=${courseId}&evaluation=${ev.id}" class="btn btn--ghost btn--sm"><i data-lucide="pie-chart" class="w-4 h-4"></i> Results</a>
                     <button onclick="startEditing(${ev.id})" class="btn btn--ghost btn--sm"><i data-lucide="settings" class="w-4 h-4"></i> Settings</button>
                 </div>
@@ -550,7 +550,10 @@ document.getElementById("createEvalBtn").addEventListener("click", async () => {
 });
 
 // Modal Helpers
-async function openModal(id) {
+let currentModalEvalTitle = "";
+
+async function openModal(id, title) {
+    currentModalEvalTitle = title || `evaluation-${id}`;
     const data = await api(`/courses/${courseId}/evaluations/${id}/link`);
     document.getElementById("shareLink").textContent = data.link;
     document.getElementById("qrImage").src = `data:image/png;base64,${data.qr_code_png_base64}`;
@@ -565,6 +568,24 @@ function closeModal() {
 function copyLink() {
     navigator.clipboard.writeText(document.getElementById("shareLink").textContent);
     alert("Link copied!");
+}
+
+// The QR is already a base64 PNG data URI sitting in the <img> src (see
+// openModal) — no extra request needed, just point a throwaway <a download>
+// at the same data URI and click it. Filename is slugified from the
+// evaluation's title so a lecturer downloading several QR codes doesn't end
+// up with a folder full of indistinguishable "qrImage.png" files.
+function downloadQr() {
+    const slug = currentModalEvalTitle
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "evaluation";
+    const a = document.createElement("a");
+    a.href = document.getElementById("qrImage").src;
+    a.download = `${slug}-qr-code.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
 }
 
 // Final Wiring
