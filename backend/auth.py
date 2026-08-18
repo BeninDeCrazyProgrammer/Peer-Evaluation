@@ -85,6 +85,39 @@ def login():
     return jsonify({"message": "Logged in", "name": lecturer.name, "email": lecturer.email})
 
 
+@auth_bp.route("/reset-password", methods=["POST"])
+@limiter.limit("5 per hour")
+def reset_password():
+    """
+    Body: {email, system_key, new_password}
+    This app has no email-sending infrastructure, so there's no "click the
+    link we emailed you" reset flow. Instead, a lecturer who's forgotten
+    their password proves they still belong to the department the same way
+    they proved it at registration — the shared system key — and sets a new
+    password directly. That means anyone who knows the department's system
+    key AND a colleague's email could reset that colleague's password; this
+    isn't a new trust boundary though, it's the exact same one registration
+    already relies on (the key is what gates who can create an account at
+    all) — this just extends it to resets instead of introducing a weaker one.
+    """
+    data = request.get_json(force=True)
+    email = (data.get("email") or "").strip()
+    system_key = data.get("system_key")
+    new_password = data.get("new_password")
+
+    if not email or not new_password:
+        return jsonify({"error": "Email and new password are required"}), 400
+    if not _check_system_key(system_key):
+        return jsonify({"error": "Invalid system key. Ask your department admin for the current key."}), 403
+
+    lecturer = LecturerModel.first(email=email)
+    if not lecturer:
+        return jsonify({"error": "No account found with that email"}), 404
+
+    lecturer.update(password_hash=generate_password_hash(new_password))
+    return jsonify({"message": "Password updated — you can now log in with your new password"})
+
+
 @auth_bp.route("/logout", methods=["POST"])
 @login_required
 def logout():
