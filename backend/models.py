@@ -649,7 +649,7 @@ class Evaluation(Model):
         criteria = [c.to_dict() for c in EvaluationCriterion.where(order_by="sort_order", evaluation_id=self.id)]
 
         detail_rs = execute(
-            "SELECT ev_s.name AS evaluator_name, ev_s.student_id AS evaluator_student_id, "
+            "SELECT ev_s.id AS evaluator_id, ev_s.name AS evaluator_name, ev_s.student_id AS evaluator_student_id, "
             "       rt_s.id AS ratee_id, rt_s.name AS ratee_name, "
             "       ec.name AS criterion, sc.score "
             "FROM submission_scores sc "

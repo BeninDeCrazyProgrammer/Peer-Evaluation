@@ -8,6 +8,7 @@ document.getElementById("backLink").href = `course.html?course=${courseId}`;
 document.getElementById("exportBtn").href = `${API_BASE}/courses/${courseId}/evaluations/${evalId}/results/export.csv`;
 
 let globalData = null; // Store results for drilling
+let globalCompletion = null; // Store roster/submission status for the matrix
 
 async function loadPage() {
     const me = await api("/auth/me");
@@ -22,11 +23,13 @@ async function loadPage() {
 async function refreshData() {
     const completion = await api(`/courses/${courseId}/evaluations/${evalId}/completion`);
     globalData = await api(`/courses/${courseId}/evaluations/${evalId}/results`);
+    globalCompletion = completion;
 
     renderKPIs(completion, globalData);
     renderCompletionGrid(completion);
     renderAveragesTable(globalData);
     renderRankings(globalData);
+    renderMatrix(completion, globalData);
 }
 
 function renderKPIs(completion, results) {
@@ -170,6 +173,67 @@ document.querySelectorAll("#rankingFilter .ranking-filter-btn").forEach(btn => {
     });
 });
 document.querySelector(`#rankingFilter .ranking-filter-btn[data-rank="${currentRankFilter}"]`).classList.add("is-active");
+
+// MATRIX: one evaluator x ratee grid per group, mirroring the paper-form
+// layout lecturers already use — rows are who's being rated, columns are
+// who's rating, a cell is the total that evaluator gave that person across
+// all criteria. Built entirely client-side from data already fetched:
+// `completion` gives the full roster per group plus who has/hasn't
+// submitted at all; `individual_scores` gives the actual per-criterion
+// scores for pairs that do have data.
+function renderMatrix(completion, data) {
+    const container = document.getElementById("matrixContainer");
+
+    // Sum each (evaluator, ratee) pair's scores across every criterion into
+    // one total, keyed by numeric student ids (not names) so this can't be
+    // confused by two different students sharing a name.
+    const totalsByPair = {};
+    data.individual_scores.forEach(row => {
+        const key = `${row.evaluator_id}-${row.ratee_id}`;
+        totalsByPair[key] = (totalsByPair[key] || 0) + row.score;
+    });
+
+    const groupsWithMembers = completion.filter(g => g.students.length > 0);
+    if (groupsWithMembers.length === 0) {
+        container.innerHTML = `<div class="p-12 text-center border-2 border-dashed border-slate-100 rounded-3xl text-slate-400">No groups in this class yet.</div>`;
+        return;
+    }
+
+    container.innerHTML = groupsWithMembers.map(group => {
+        const students = group.students; // [{id, name, student_id, has_submitted}]
+
+        const headerCells = students.map(e => `<th class="matrix-colhead">${e.name}</th>`).join("");
+
+        const rows = students.map(ratee => {
+            const cells = students.map(evaluator => {
+                if (evaluator.id === ratee.id) {
+                    return `<td class="matrix-cell matrix-cell--self" title="Self">—</td>`;
+                }
+                if (!evaluator.has_submitted) {
+                    return `<td class="matrix-cell matrix-cell--missing" title="${evaluator.name} did not submit an evaluation">—</td>`;
+                }
+                const total = totalsByPair[`${evaluator.id}-${ratee.id}`];
+                if (total === undefined) {
+                    return `<td class="matrix-cell matrix-cell--missing" title="${evaluator.name} did not evaluate ${ratee.name}">—</td>`;
+                }
+                return `<td class="matrix-cell">${total}</td>`;
+            }).join("");
+            return `<tr><th class="matrix-rowhead">${ratee.name}</th>${cells}</tr>`;
+        }).join("");
+
+        return `
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="p-4 border-b border-slate-100 bg-slate-50 font-bold text-slate-800">${group.group_label}</div>
+                <div class="overflow-x-auto">
+                    <table class="matrix-table w-full">
+                        <thead><tr><th class="matrix-corner matrix-rowhead"></th>${headerCells}</tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }).join("");
+}
 
 // THE DRILL-DOWN LOGIC
 function openDrawer(studentName) {
