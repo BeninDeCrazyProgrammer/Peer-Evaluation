@@ -91,6 +91,7 @@ async function loadCourseData() {
     const course = await api(`/courses/${courseId}`);
     document.getElementById("courseName").textContent = course.name;
     document.getElementById("courseCrumb").textContent = course.name;
+    document.getElementById("courseCrumbMobile").textContent = course.name;
     document.getElementById("courseEyebrow").textContent = `Course ID: ${course.id}`;
 
     resetForm();

@@ -5,6 +5,7 @@ if (!courseId || !evalId) window.location.href = "dashboard.html";
 // Initialize UI
 initSections();
 document.getElementById("backLink").href = `course.html?course=${courseId}`;
+document.getElementById("backLinkMobile").href = `course.html?course=${courseId}`;
 document.getElementById("exportBtn").href = `${API_BASE}/courses/${courseId}/evaluations/${evalId}/results/export.csv`;
 
 let globalData = null; // Store results for drilling
