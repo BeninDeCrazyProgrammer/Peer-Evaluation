@@ -12,18 +12,27 @@
 
     <!-- Appbar -->
     <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <a class="brand text-xl" href="../index.html">Peer<span class="text-orange-600">Eval</span></a>
+        <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
+            <!-- Mobile: back chevron + current course name only — the full
+                 breadcrumb trail plus badge plus two buttons doesn't fit on
+                 narrow screens, so it's swapped for a simple "go up one
+                 level" affordance instead. -->
+            <a href="dashboard.html" class="flex sm:hidden items-center gap-1.5 min-w-0 text-slate-700">
+                <i data-lucide="chevron-left" class="w-5 h-5 shrink-0"></i>
+                <span id="courseCrumbMobile" class="text-sm font-bold truncate">Loading...</span>
+            </a>
+            <!-- Tablet/desktop: full breadcrumb -->
+            <div class="hidden sm:flex items-center gap-3 min-w-0">
+                <a class="brand text-xl shrink-0" href="../index.html">Peer<span class="text-orange-600">Eval</span></a>
                 <span class="text-slate-300">/</span>
-                <a href="dashboard.html" class="text-sm font-medium text-slate-500 hover:text-slate-800">Courses</a>
+                <a href="dashboard.html" class="text-sm font-medium text-slate-500 hover:text-slate-800 shrink-0">Courses</a>
                 <span class="text-slate-300">/</span>
-                <span id="courseCrumb" class="text-sm font-bold text-slate-900">Loading...</span>
+                <span id="courseCrumb" class="text-sm font-bold text-slate-900 truncate">Loading...</span>
             </div>
-            <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2 sm:gap-4 shrink-0">
                 <span id="courseEyebrow" class="hidden md:block text-[10px] font-bold bg-slate-100 px-2 py-1 rounded text-slate-500 uppercase tracking-tighter">ID: --</span>
-                <a class="btn btn--ghost btn--sm" href="dashboard.html"><i data-lucide="layout-grid" class="w-4 h-4"></i> Back</a>
-                <button class="btn btn--ghost btn--sm" id="logoutBtn"><i data-lucide="log-out" class="w-4 h-4"></i> Log out</button>
+                <a class="hidden sm:flex btn btn--ghost btn--sm" href="dashboard.html"><i data-lucide="layout-grid" class="w-4 h-4"></i> Back</a>
+                <button class="btn btn--ghost btn--sm" id="logoutBtn"><i data-lucide="log-out" class="w-4 h-4"></i> <span class="hidden sm:inline">Log out</span></button>
             </div>
         </div>
     </header>

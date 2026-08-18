@@ -10,6 +10,34 @@ if (!courseId || !evalId) {
     document.body.innerHTML = `<div class="p-12 text-center text-slate-500 font-bold">Invalid Evaluation Link.</div>`;
 }
 
+// Swaps a button's label for a loading state and disables it, so a slow
+// connection or an impatient extra tap can't fire the same request twice —
+// same double-submit guard used on the lecturer side for course creation.
+// The original label is stashed on the element itself, not a shared
+// variable, so several buttons can be mid-request independently.
+function setBtnLoading(btn, loadingLabel) {
+    if (btn.dataset.originalHtml === undefined) btn.dataset.originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = loadingLabel;
+}
+function resetBtnLoading(btn) {
+    if (btn.dataset.originalHtml !== undefined) btn.innerHTML = btn.dataset.originalHtml;
+    btn.disabled = false;
+}
+
+// Every PIN in this app is a 4-digit number (see backend/rate_limit.py and
+// models.py) — filtering keystrokes down to digits as the student types
+// catches a stray letter or symbol immediately instead of only after they
+// hit Continue. The student ID / name field is deliberately left alone:
+// a full name is a legitimate, supported way to log in (see
+// Student.find_in_class), so it can't be restricted to digits-only.
+function restrictToDigits(input) {
+    input.addEventListener("input", () => {
+        input.value = input.value.replace(/\D/g, "").slice(0, 4);
+    });
+}
+["newPin", "confirmPin", "loginPin"].forEach(id => restrictToDigits(document.getElementById(id)));
+
 async function init() {
     try {
         evaluationData = await api(`/courses/${courseId}/evaluations/${evalId}`);
@@ -41,6 +69,8 @@ document.getElementById("findBtn").addEventListener("click", async () => {
     const identifier = document.getElementById("identifier").value.trim();
     if (!identifier) return;
 
+    const btn = document.getElementById("findBtn");
+    setBtnLoading(btn, "Checking...");
     try {
         const result = await api(`/courses/${courseId}/evaluations/${evalId}/identify`, {
             method: "POST",
@@ -50,6 +80,8 @@ document.getElementById("findBtn").addEventListener("click", async () => {
         showPinStep(result.name, result.has_pin);
     } catch (err) {
         showError(identifyError, err);
+    } finally {
+        resetBtnLoading(btn);
     }
 });
 
@@ -86,8 +118,11 @@ document.getElementById("claimPinBtn").addEventListener("click", async () => {
     const pin = document.getElementById("newPin").value.trim();
     const confirmPin = document.getElementById("confirmPin").value.trim();
     if (!/^\d{4}$/.test(pin)) { showError(pinError, new Error("PIN must be exactly 4 digits.")); return; }
+    if (!/^\d{4}$/.test(confirmPin)) { showError(pinError, new Error("Confirm PIN must be exactly 4 digits.")); return; }
     if (pin !== confirmPin) { showError(pinError, new Error("PINs don't match.")); return; }
 
+    const btn = document.getElementById("claimPinBtn");
+    setBtnLoading(btn, "Setting PIN...");
     try {
         studentData = await api(`/courses/${courseId}/evaluations/${evalId}/claim-pin`, {
             method: "POST",
@@ -97,14 +132,18 @@ document.getElementById("claimPinBtn").addEventListener("click", async () => {
         startWizard();
     } catch (err) {
         showError(pinError, err);
+    } finally {
+        resetBtnLoading(btn);
     }
 });
 
 document.getElementById("loginPinBtn").addEventListener("click", async () => {
     hideError(pinError);
     const pin = document.getElementById("loginPin").value.trim();
-    if (!pin) return;
+    if (!/^\d{4}$/.test(pin)) { showError(pinError, new Error("PIN must be exactly 4 digits.")); return; }
 
+    const btn = document.getElementById("loginPinBtn");
+    setBtnLoading(btn, "Checking...");
     try {
         studentData = await api(`/courses/${courseId}/evaluations/${evalId}/lookup`, {
             method: "POST",
@@ -114,6 +153,8 @@ document.getElementById("loginPinBtn").addEventListener("click", async () => {
         startWizard();
     } catch (err) {
         showError(pinError, err);
+    } finally {
+        resetBtnLoading(btn);
     }
 });
 
@@ -204,6 +245,8 @@ document.getElementById("submitBtn").addEventListener("click", async () => {
         };
     });
 
+    const btn = document.getElementById("submitBtn");
+    setBtnLoading(btn, "Submitting...");
     try {
         await api(`/courses/${courseId}/evaluations/${evalId}/submit`, {
             method: "POST",
@@ -216,8 +259,12 @@ document.getElementById("submitBtn").addEventListener("click", async () => {
         document.getElementById("formCard").classList.add("hidden");
         document.getElementById("doneCard").classList.remove("hidden");
         lucide.createIcons();
+        // No resetBtnLoading here — the card is gone on success, and leaving
+        // the button disabled/labeled "Submitting..." is exactly right if
+        // the person somehow flips back to this view.
     } catch (err) {
         showError(document.getElementById("submitError"), err);
+        resetBtnLoading(btn);
     }
 });
 
