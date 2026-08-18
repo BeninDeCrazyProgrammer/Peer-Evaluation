@@ -220,6 +220,35 @@ tr:last-child td { border-bottom: none; }
   margin-top: 14px;
 }
 
+.success-box {
+  background: #e3ebe5;
+  border: 1px solid #a9c2ac;
+  color: var(--moss-deep);
+  border-radius: 7px;
+  padding: 10px 14px;
+  font-size: 0.88rem;
+  margin-top: 14px;
+}
+
+.password-field { position: relative; }
+.password-field input { padding-right: 64px; }
+.password-field .show-password-btn {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  padding: 6px 8px;
+}
+.password-field .show-password-btn:hover { color: var(--ink); }
+
 .hint { color: var(--ink-soft); font-size: 0.84rem; }
 
 .eyebrow {

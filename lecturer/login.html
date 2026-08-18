@@ -26,20 +26,40 @@
 
       <div id="systemKeyField" style="display:none">
         <label for="systemKey">System key</label>
-        <input type="password" id="systemKey" placeholder="Provided by your department">
+        <div class="password-field">
+          <input type="password" id="systemKey" placeholder="Provided by your department">
+          <button type="button" class="show-password-btn" data-target="systemKey">Show</button>
+        </div>
       </div>
 
       <label for="email">Email</label>
       <input type="email" id="email" placeholder="you@university.edu">
 
-      <label for="password">Password</label>
-      <input type="password" id="password">
+      <label for="password" id="passwordLabel">Password</label>
+      <div class="password-field">
+        <input type="password" id="password">
+        <button type="button" class="show-password-btn" data-target="password">Show</button>
+      </div>
+
+      <div id="confirmPasswordField" style="display:none">
+        <label for="confirmPassword">Confirm new password</label>
+        <div class="password-field">
+          <input type="password" id="confirmPassword">
+          <button type="button" class="show-password-btn" data-target="confirmPassword">Show</button>
+        </div>
+      </div>
+
+      <div class="row" id="forgotPasswordRow" style="margin-top:14px">
+        <button class="btn btn--ghost btn--sm" id="forgotPasswordLink" type="button">Forgot password?</button>
+      </div>
 
       <div class="row" style="margin-top:20px">
         <button class="btn" id="submitBtn">Log in</button>
+        <button class="btn btn--ghost" id="backToLoginBtn" type="button" style="display:none">Back to log in</button>
       </div>
 
       <div class="error-box" id="errorBox" style="display:none"></div>
+      <div class="success-box" id="successBox" style="display:none"></div>
     </div>
   </div>
 
