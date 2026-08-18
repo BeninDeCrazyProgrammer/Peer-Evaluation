@@ -17,6 +17,14 @@
         .status-ring { transition: stroke-dashoffset 0.5s ease; }
         .ranking-filter-btn { @apply text-slate-500; }
         .ranking-filter-btn.is-active { @apply bg-white text-orange-600 shadow-sm; }
+        .matrix-table { border-collapse: collapse; font-size: 0.8rem; }
+        .matrix-table th, .matrix-table td { border: 1px solid #e2e8f0; padding: 8px 12px; text-align: center; white-space: nowrap; }
+        .matrix-corner { background: #f8fafc; }
+        .matrix-colhead { @apply bg-slate-50 text-slate-600 font-semibold text-xs; max-width: 140px; white-space: normal; }
+        .matrix-rowhead { @apply bg-slate-50 text-slate-800 font-bold text-xs text-left; position: sticky; left: 0; }
+        .matrix-cell { @apply font-semibold text-slate-700 bg-white; }
+        .matrix-cell--self { background: #fde047; color: #78350f; }
+        .matrix-cell--missing { background: #ef4444; color: white; }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen">
@@ -103,6 +111,9 @@
                 <button class="tab-btn section-nav__item" data-section="rankings">
                     <div class="flex items-center gap-2"><i data-lucide="trophy" class="w-4 h-4"></i> Rankings</div>
                 </button>
+                <button class="tab-btn section-nav__item" data-section="matrix">
+                    <div class="flex items-center gap-2"><i data-lucide="grid-3x3" class="w-4 h-4"></i> Matrix</div>
+                </button>
                 <button class="tab-btn section-nav__item" data-section="completion">
                     <div class="flex items-center gap-2"><i data-lucide="users" class="w-4 h-4"></i> Group Status</div>
                 </button>
@@ -158,6 +169,22 @@
             <section class="section-panel p-6" data-section="completion">
                 <div id="completionGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <!-- Dynamic Group Cards -->
+                </div>
+            </section>
+
+            <!-- Matrix Panel: one evaluator x ratee grid per group -->
+            <section class="section-panel p-6" data-section="matrix">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-lg font-bold">Evaluator × Rated Matrix</h3>
+                    <div class="text-xs text-slate-400 italic font-mono uppercase tracking-widest">Live Data</div>
+                </div>
+                <div class="flex items-center gap-4 mb-6 text-xs text-slate-500">
+                    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm inline-block" style="background:#fde047"></span> Self</span>
+                    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm inline-block" style="background:#ef4444"></span> Didn't submit / didn't rate this person</span>
+                    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm inline-block bg-white border border-slate-300"></span> Total score given</span>
+                </div>
+                <div id="matrixContainer" class="space-y-6">
+                    <!-- Dynamic per-group matrix cards -->
                 </div>
             </section>
         </div>
