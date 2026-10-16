@@ -1,69 +1,170 @@
 from flask import Blueprint, request, jsonify
 
-from db import execute
+from models import Evaluation, Student, Submission, EvaluationScale, EvaluationCriterion, AmbiguousStudentError
+from db import batch_execute
+from rate_limit import limiter, pin_attempt_key
 
 submissions_bp = Blueprint("submissions", __name__, url_prefix="/courses/<int:course_id>/evaluations/<int:evaluation_id>")
 
-
-def _find_student(course_id, identifier):
-    """Match by student_id first (exact), then by name (case-insensitive), within this course."""
-    rs = execute(
-        "SELECT s.id, s.name, s.student_id, s.group_id "
-        "FROM students s JOIN groups g ON g.id = s.group_id "
-        "WHERE g.course_id = ? AND s.student_id = ?",
-        [course_id, identifier.strip()],
-    )
-    if rs.rows:
-        return dict(zip(rs.columns, rs.rows[0]))
-
-    rs = execute(
-        "SELECT s.id, s.name, s.student_id, s.group_id "
-        "FROM students s JOIN groups g ON g.id = s.group_id "
-        "WHERE g.course_id = ? AND LOWER(s.name) = LOWER(?)",
-        [course_id, identifier.strip()],
-    )
-    if rs.rows:
-        return dict(zip(rs.columns, rs.rows[0]))
-
-    return None
+# lookup/ and submit/ both verify a student's PIN and are unauthenticated, so
+# they get a per-identity limit (pin_attempt_key) on top of the plain per-IP
+# one — a 4-digit PIN is only 10,000 combinations, and without this an
+# attacker could brute-force one student's PIN in well under a minute.
 
 
-@submissions_bp.route("/lookup", methods=["POST"])
-def lookup(course_id, evaluation_id):
+def _valid_pin_format(pin):
+    return isinstance(pin, str) and len(pin) == 4 and pin.isdigit()
+
+
+def _find_evaluation_or_error(course_id, evaluation_id):
+    """
+    Every student-facing route needs this first: 404 if the evaluation
+    doesn't exist, 403 (with the same message students see in the UI) if
+    it's closed — either manually or because its deadline already passed.
+    check_and_close() (called inside to_dict()/here via the model) is what
+    actually flips a stale "open" status once the deadline is reached, so
+    this needs to happen through the model, not a raw status-column read.
+    """
+    evaluation = Evaluation.first(id=evaluation_id, course_id=course_id)
+    if not evaluation:
+        return None, (jsonify({"error": "Evaluation not found"}), 404)
+    evaluation.check_and_close()
+    if evaluation.status == "closed":
+        return None, (jsonify({"error": "Peer evaluation has closed", "closed": True}), 403)
+    return evaluation, None
+
+
+def _find_student_or_error(class_id, identifier):
+    """
+    Wraps Student.find_in_class for the three routes below: returns
+    (student, None) on a clean match, or (None, (response, status)) if the
+    caller should return early — either nobody matched, or more than one
+    student did (see AmbiguousStudentError's docstring in models.py).
+    """
+    try:
+        student = Student.find_in_class(class_id, identifier)
+    except AmbiguousStudentError:
+        return None, (jsonify({
+            "error": "More than one student matches that. If you used your name, try your student ID instead — "
+                     "if your ID doesn't work either, ask your lecturer to check the roster for a duplicate ID."
+        }), 409)
+    if not student:
+        return None, (jsonify({"error": "We couldn't find you in this class's groups. Check your ID/name and try again."}), 404)
+    return student, None
+
+
+@submissions_bp.route("/identify", methods=["POST"])
+@limiter.limit("30 per hour")
+def identify(course_id, evaluation_id):
     """
     Body: {"identifier": "10984191"}   -- student ID or full name
-    Returns the student's record, their group's other members (self excluded),
-    and whether they've already submitted this evaluation.
+    First step of access: just resolves who the student is and whether
+    they've claimed a PIN yet, so the frontend knows whether to show a
+    "create your PIN" or "enter your PIN" form next. Doesn't touch scores
+    or reveal groupmates — that only happens after /lookup succeeds.
     """
+    evaluation, error = _find_evaluation_or_error(course_id, evaluation_id)
+    if error:
+        return error
+
     data = request.get_json(force=True)
     identifier = (data.get("identifier") or "").strip()
     if not identifier:
         return jsonify({"error": "Enter your name or student ID"}), 400
 
-    student = _find_student(course_id, identifier)
-    if not student:
-        return jsonify({"error": "We couldn't find you in this course's groups. Check your ID/name and try again."}), 404
+    student, error = _find_student_or_error(evaluation.class_id, identifier)
+    if error:
+        return error
 
-    already = execute(
-        "SELECT id FROM submissions WHERE evaluation_id = ? AND evaluator_student_id = ?",
-        [evaluation_id, student["id"]],
-    )
-    if already.rows:
+    return jsonify({"name": student.name, "has_pin": student.has_pin()})
+
+
+@submissions_bp.route("/claim-pin", methods=["POST"])
+@limiter.limit("20 per hour")
+def claim_pin(course_id, evaluation_id):
+    """
+    Body: {"identifier": "10984191", "pin": "4821", "confirm_pin": "4821"}
+    First-time-only: sets this student's PIN. Whoever gets here first for a
+    given name/ID owns that identity from then on — same as any "claim your
+    account" flow. If a PIN is already set, this refuses; the lecturer can
+    clear it (roster > Reset PIN) if a student is legitimately locked out.
+    On success, behaves like /lookup and returns the peer list right away.
+    """
+    evaluation, error = _find_evaluation_or_error(course_id, evaluation_id)
+    if error:
+        return error
+
+    data = request.get_json(force=True)
+    identifier = (data.get("identifier") or "").strip()
+    pin = (data.get("pin") or "").strip()
+    confirm_pin = (data.get("confirm_pin") or "").strip()
+
+    if not _valid_pin_format(pin):
+        return jsonify({"error": "PIN must be exactly 4 digits"}), 400
+    if pin != confirm_pin:
+        return jsonify({"error": "PINs don't match"}), 400
+
+    student, error = _find_student_or_error(evaluation.class_id, identifier)
+    if error:
+        return error
+    if student.has_pin():
+        return jsonify({"error": "A PIN is already set for this name/ID. Log in with it instead, or ask your lecturer to reset it."}), 409
+
+    student.claim_pin(pin)
+    return _access_response(student, evaluation_id)
+
+
+@submissions_bp.route("/lookup", methods=["POST"])
+@limiter.limit("30 per hour")
+@limiter.limit("8 per 15 minutes", key_func=pin_attempt_key)
+def lookup(course_id, evaluation_id):
+    """
+    Body: {"identifier": "10984191", "pin": "4821"}
+    Log in with an already-claimed PIN. Returns the student's record, their
+    group's other members (self excluded), and 409s if they've already
+    submitted this evaluation.
+    """
+    evaluation, error = _find_evaluation_or_error(course_id, evaluation_id)
+    if error:
+        return error
+
+    data = request.get_json(force=True)
+    identifier = (data.get("identifier") or "").strip()
+    pin = (data.get("pin") or "").strip()
+    if not identifier:
+        return jsonify({"error": "Enter your name or student ID"}), 400
+    if not pin:
+        return jsonify({"error": "Enter your PIN"}), 400
+
+    student, error = _find_student_or_error(evaluation.class_id, identifier)
+    if error:
+        return error
+    if not student.has_pin():
+        return jsonify({"error": "No PIN has been set for this name/ID yet — create one first.", "needs_claim": True}), 409
+
+    # Deliberately the same error as "not found" — don't reveal whether the
+    # ID/name matched a real student, only that the identifier+PIN pair failed.
+    if not student.check_pin(pin):
+        return jsonify({"error": "Incorrect PIN. Forgot it? Ask your lecturer to reset it."}), 401
+
+    return _access_response(student, evaluation_id)
+
+
+def _access_response(student, evaluation_id):
+    if Submission.exists(evaluation_id=evaluation_id, evaluator_student_id=student.id):
         return jsonify({"error": "You've already submitted this evaluation.", "already_submitted": True}), 409
 
-    peers = execute(
-        "SELECT id, name FROM students WHERE group_id = ? AND id != ? ORDER BY name",
-        [student["group_id"], student["id"]],
-    )
-    peers_list = [dict(zip(peers.columns, row)) for row in peers.rows]
+    peers = Student.groupmates(student.group_id, excluding_id=student.id)
 
     return jsonify({
-        "student": {"id": student["id"], "name": student["name"], "student_id": student["student_id"]},
-        "peers_to_evaluate": peers_list,
+        "student": {"id": student.id, "name": student.name, "student_id": student.student_id},
+        "peers_to_evaluate": [{"id": p.id, "name": p.name} for p in peers],
     })
 
 
 @submissions_bp.route("/submit", methods=["POST"])
+@limiter.limit("30 per hour")
+@limiter.limit("8 per 15 minutes", key_func=pin_attempt_key)
 def submit(course_id, evaluation_id):
     """
     Body:
@@ -74,42 +175,43 @@ def submit(course_id, evaluation_id):
     Every (peer x criterion) combination is expected — validated for completeness
     and that every score is a legal value on this evaluation's scale.
     """
+    evaluation, error = _find_evaluation_or_error(course_id, evaluation_id)
+    if error:
+        return error
+
     data = request.get_json(force=True)
     evaluator_id = data.get("evaluator_student_id")
+    pin = (data.get("pin") or "").strip()
     scores = data.get("scores") or []
 
     if not evaluator_id or not scores:
         return jsonify({"error": "evaluator_student_id and scores are required"}), 400
+    if not pin:
+        return jsonify({"error": "Your PIN is required to submit"}), 400
 
-    # Evaluator must belong to this course
-    rs = execute(
-        "SELECT s.group_id FROM students s JOIN groups g ON g.id = s.group_id "
-        "WHERE s.id = ? AND g.course_id = ?",
-        [evaluator_id, course_id],
-    )
-    if not rs.rows:
-        return jsonify({"error": "Student not found in this course"}), 404
-    evaluator_group_id = rs.rows[0][0]
+    evaluator = Student.find(evaluator_id)
+    if not evaluator:
+        return jsonify({"error": "Student not found in this class"}), 404
+    # Confirm the student's group actually belongs to this evaluation's class
+    # (not just the course — a course can have several classes now, each
+    # with its own roster, and a student from a different class shouldn't be
+    # able to submit against this one just by knowing another student's id).
+    from models import Group
+    group = Group.first(id=evaluator.group_id, class_id=evaluation.class_id)
+    if not group:
+        return jsonify({"error": "Student not found in this class"}), 404
+    # Re-verify the PIN here too — /lookup and /submit are independent
+    # requests, and this is the call that actually writes scores, so it
+    # can't trust that whoever calls it already passed /lookup.
+    if not evaluator.check_pin(pin):
+        return jsonify({"error": "Incorrect PIN"}), 401
 
-    # Block a repeat submission before doing any other work
-    already = execute(
-        "SELECT id FROM submissions WHERE evaluation_id = ? AND evaluator_student_id = ?",
-        [evaluation_id, evaluator_id],
-    )
-    if already.rows:
+    if Submission.exists(evaluation_id=evaluation_id, evaluator_student_id=evaluator_id):
         return jsonify({"error": "You've already submitted this evaluation."}), 409
 
-    # Valid scale values for this evaluation
-    scale_rs = execute("SELECT value FROM evaluation_scale WHERE evaluation_id = ?", [evaluation_id])
-    valid_values = {row[0] for row in scale_rs.rows}
-
-    # Valid criteria for this evaluation
-    crit_rs = execute("SELECT id FROM evaluation_criteria WHERE evaluation_id = ?", [evaluation_id])
-    valid_criteria = {row[0] for row in crit_rs.rows}
-
-    # Valid ratees: everyone else in the evaluator's group
-    peers_rs = execute("SELECT id FROM students WHERE group_id = ? AND id != ?", [evaluator_group_id, evaluator_id])
-    valid_ratees = {row[0] for row in peers_rs.rows}
+    valid_values = {s.value for s in EvaluationScale.where(evaluation_id=evaluation_id)}
+    valid_criteria = {c.id for c in EvaluationCriterion.where(evaluation_id=evaluation_id)}
+    valid_ratees = {p.id for p in Student.groupmates(evaluator.group_id, excluding_id=evaluator_id)}
 
     for s in scores:
         if s.get("ratee_student_id") == evaluator_id:
@@ -121,20 +223,66 @@ def submit(course_id, evaluation_id):
         if s.get("score") not in valid_values:
             return jsonify({"error": f"Score {s.get('score')} isn't on this evaluation's scale"}), 400
 
-    expected = len(valid_ratees) * len(valid_criteria)
-    if len(scores) != expected:
-        return jsonify({"error": f"Expected {expected} scores (every peer x every criterion), got {len(scores)}"}), 400
+    # Check the exact set of (ratee, criterion) pairs, not just the count —
+    # matching counts alone would let a client send two scores for one
+    # peer/criterion and silently skip another, passing validation while
+    # leaving a gap in the data.
+    expected_pairs = {(r, c) for r in valid_ratees for c in valid_criteria}
+    submitted_pairs = {(s["ratee_student_id"], s["criterion_id"]) for s in scores}
+    if submitted_pairs != expected_pairs:
+        missing = expected_pairs - submitted_pairs
+        extra = submitted_pairs - expected_pairs
+        duplicates = len(scores) != len(submitted_pairs)
+        detail = "Duplicate entries for the same peer/criterion." if duplicates and not missing and not extra \
+            else "Missing or unexpected peer/criterion combinations."
+        return jsonify({
+            "error": f"Expected exactly one score per peer per criterion — every peer x every criterion. {detail}"
+        }), 400
 
-    sub_rs = execute(
-        "INSERT INTO submissions (evaluation_id, evaluator_student_id) VALUES (?, ?) RETURNING id",
-        [evaluation_id, evaluator_id],
-    )
-    submission_id = sub_rs.rows[0][0]
-
+    # Written as one atomic batch (Submission + every SubmissionScore) so a
+    # dropped connection or DB error partway through can't leave a Submission
+    # row on its own with only some of its scores — that would both corrupt
+    # this student's data and permanently lock them out of resubmitting,
+    # since submissions are one-per-student with no reset.
+    #
+    # The scores INSERT deliberately does NOT use last_insert_rowid() per
+    # row: that function reflects the single most recent insert on the
+    # connection, full stop — it updates after every statement, including
+    # each score row this same loop would insert. With more than one score
+    # (i.e. almost always), row 2 would pick up row 1's own id instead of
+    # the submission's, row 3 would pick up row 2's, and so on, silently
+    # writing wrong submission_id values with no error (foreign keys are
+    # off by default on Turso, same as SQLite generally, so nothing catches
+    # this at write time). Looking the id up by its actual unique key
+    # (evaluation_id, evaluator_student_id) inside the same statement, once,
+    # sidesteps the whole problem — it's the same row regardless of how many
+    # other inserts happen around it in this transaction. (SQLite's VALUES
+    # table doesn't support naming its own columns — `v.column1/2/3` are its
+    # auto-generated names, not something defined here.)
+    scores_values_sql = ", ".join(["(?, ?, ?)"] * len(scores))
+    scores_args = []
     for s in scores:
-        execute(
-            "INSERT INTO submission_scores (submission_id, ratee_student_id, criterion_id, score) VALUES (?, ?, ?, ?)",
-            [submission_id, s["ratee_student_id"], s["criterion_id"], s["score"]],
-        )
+        scores_args.extend([s["ratee_student_id"], s["criterion_id"], s["score"]])
+
+    statements = [
+        (
+            "INSERT INTO submissions (evaluation_id, evaluator_student_id) VALUES (?, ?)",
+            [evaluation_id, evaluator_id],
+        ),
+        (
+            "INSERT INTO submission_scores (submission_id, ratee_student_id, criterion_id, score) "
+            "SELECT (SELECT id FROM submissions WHERE evaluation_id = ? AND evaluator_student_id = ?), "
+            "v.column1, v.column2, v.column3 "
+            f"FROM (VALUES {scores_values_sql}) AS v",
+            [evaluation_id, evaluator_id] + scores_args,
+        ),
+    ]
+
+    try:
+        batch_execute(statements)
+    except Exception as e:
+        print(f"SUBMIT BATCH ERROR — course={course_id} evaluation={evaluation_id} "
+              f"evaluator={evaluator_id} scores={len(scores)}: {e!r}")
+        return jsonify({"error": "Something went wrong saving your submission. Please try again."}), 500
 
     return jsonify({"message": "Submitted — thank you!"}), 201

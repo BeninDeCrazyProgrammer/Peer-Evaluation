@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
 
-from db import execute
+from models import Course
 
 courses_bp = Blueprint("courses", __name__, url_prefix="/courses")
 
@@ -14,32 +14,28 @@ def create_course():
     if not name:
         return jsonify({"error": "Course name is required"}), 400
 
-    rs = execute(
-        "INSERT INTO courses (lecturer_id, name) VALUES (?, ?) RETURNING id",
-        [current_user.id, name],
-    )
-    course_id = rs.rows[0][0]
-    return jsonify({"id": course_id, "name": name}), 201
+    # Catches both an accidental double-click on Create (nothing previously
+    # stopped the button from firing twice while the first request was still
+    # in flight) and a genuine retry — either way, the lecturer almost never
+    # wants two identically-named courses of their own sitting side by side.
+    if Course.name_taken(current_user.id, name):
+        return jsonify({"error": f"You already have a course named \"{name}\". "
+                                  f"Open the existing one, or use a different name for a new one."}), 409
+
+    course = Course.create(lecturer_id=current_user.id, name=name)
+    return jsonify(course.to_dict()), 201
 
 
 @courses_bp.route("", methods=["GET"])
 @login_required
 def list_courses():
-    rs = execute(
-        "SELECT id, name, created_at FROM courses WHERE lecturer_id = ? ORDER BY created_at DESC",
-        [current_user.id],
-    )
-    courses = [dict(zip(rs.columns, row)) for row in rs.rows]
-    return jsonify(courses)
+    courses = Course.where(order_by="created_at DESC", lecturer_id=current_user.id)
+    return jsonify([c.to_dict() for c in courses])
 
 
 def _assert_owns_course(course_id):
-    """Raises a 404-worthy None if this course doesn't belong to the logged-in lecturer."""
-    rs = execute(
-        "SELECT id FROM courses WHERE id = ? AND lecturer_id = ?",
-        [course_id, current_user.id],
-    )
-    return bool(rs.rows)
+    """True if this course belongs to the logged-in lecturer."""
+    return Course.owned_by_id(course_id, current_user.id)
 
 
 @courses_bp.route("/<int:course_id>", methods=["GET"])
@@ -47,5 +43,21 @@ def _assert_owns_course(course_id):
 def get_course(course_id):
     if not _assert_owns_course(course_id):
         return jsonify({"error": "Course not found"}), 404
-    rs = execute("SELECT id, name, created_at FROM courses WHERE id = ?", [course_id])
-    return jsonify(dict(zip(rs.columns, rs.rows[0])))
+    return jsonify(Course.find(course_id).to_dict())
+
+
+@courses_bp.route("/<int:course_id>", methods=["DELETE"])
+@login_required
+def delete_course(course_id):
+    """
+    Deletes a course and everything under it (groups, students, evaluations,
+    and every submission/score ever recorded for them) — irreversible. The
+    frontend is expected to get explicit confirmation before calling this;
+    there's no undo or soft-delete here.
+    """
+    course = Course.find(course_id)
+    if not course or not course.owned_by(current_user.id):
+        return jsonify({"error": "Course not found"}), 404
+
+    course.delete_cascade()
+    return jsonify({"message": "Course deleted"}), 200

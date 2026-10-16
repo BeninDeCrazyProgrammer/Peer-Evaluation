@@ -1,253 +1,195 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Course — PeerEval</title>
-<link rel="stylesheet" href="../css/style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Course — PeerEval</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="../css/style.css?v=20260818">
 </head>
-<body>
-  <div class="topbar">
-    <a class="brand" href="../index.html">Peer<span>Eval</span></a>
-    <a class="btn btn--ghost btn--sm" href="dashboard.html">All courses</a>
-  </div>
-  <div class="wrap">
-    <span class="eyebrow" id="courseEyebrow">Course</span>
-    <h1 id="courseName">Loading…</h1>
+<body class="bg-slate-50 min-h-screen">
 
-    <div class="card">
-      <h3>Groups</h3>
-      <p class="hint">Upload the groups spreadsheet (Group Number / Name / ID columns).
-        Re-uploading replaces the current group list for this course.</p>
-      <input type="file" id="groupsFile" accept=".xlsx,.xls">
-      <div class="row" style="margin-top:14px">
-        <button class="btn btn--clay" id="uploadBtn">Upload groups</button>
-      </div>
-      <div class="error-box" id="uploadError" style="display:none"></div>
-      <div id="groupsList" style="margin-top:18px"></div>
-    </div>
-
-    <div class="card">
-      <h3 id="evalFormTitle">New evaluation</h3>
-      <p class="hint" id="editingHint" style="display:none">
-        Editing this evaluation. Criteria/scale changes only save if nobody has submitted yet.
-        <button class="btn btn--ghost btn--sm" id="cancelEditBtn" type="button">Cancel edit</button>
-      </p>
-
-      <label>Title</label>
-      <input type="text" id="evalTitle" placeholder="Peer Evaluation 1">
-
-      <label>Criteria</label>
-      <div id="criteriaRows"></div>
-      <button class="btn btn--ghost btn--sm" id="addCriterion" style="margin-top:8px">+ Add criterion</button>
-
-      <label style="margin-top:24px">Rating scale</label>
-      <p class="hint" style="margin:0 0 8px">Define your own points, e.g. 0 = Unacceptable up to 4 = Excellent.</p>
-      <div id="scaleRows"></div>
-      <button class="btn btn--ghost btn--sm" id="addScalePoint" style="margin-top:8px">+ Add scale point</button>
-
-      <div class="row" style="margin-top:20px">
-        <button class="btn" id="createEvalBtn">Create evaluation</button>
-      </div>
-      <div class="error-box" id="evalError" style="display:none"></div>
-    </div>
-
-    <div class="card">
-      <h3>Evaluations</h3>
-      <div id="evalsList" class="hint">Loading…</div>
-    </div>
-  </div>
-
-  <script src="../js/api.js"></script>
-  <script>
-    const courseId = qs("course");
-    if (!courseId) window.location.href = "dashboard.html";
-
-    const uploadError = document.getElementById("uploadError");
-    const evalError = document.getElementById("evalError");
-
-    function criterionRow(value = "") {
-      const div = document.createElement("div");
-      div.className = "row";
-      div.style.marginTop = "8px";
-      div.innerHTML = `<input type="text" class="criterion-input" placeholder="e.g. Participation" value="${value}">
-                        <button class="btn btn--ghost btn--sm remove-row">✕</button>`;
-      div.querySelector(".remove-row").addEventListener("click", () => div.remove());
-      return div;
-    }
-
-    function scaleRow(value = "", label = "") {
-      const div = document.createElement("div");
-      div.className = "row";
-      div.style.marginTop = "8px";
-      div.innerHTML = `<input type="number" class="scale-value" placeholder="0" style="max-width:70px" value="${value}">
-                        <input type="text" class="scale-label" placeholder="Unacceptable" value="${label}">
-                        <button class="btn btn--ghost btn--sm remove-row">✕</button>`;
-      div.querySelector(".remove-row").addEventListener("click", () => div.remove());
-      return div;
-    }
-
-    const criteriaRows = document.getElementById("criteriaRows");
-    const scaleRows = document.getElementById("scaleRows");
-
-    // starting content is filled by resetForm() below (also reused when cancelling an edit)
-
-    document.getElementById("addCriterion").addEventListener("click", () => criteriaRows.appendChild(criterionRow()));
-    document.getElementById("addScalePoint").addEventListener("click", () => scaleRows.appendChild(scaleRow()));
-
-    let editingEvalId = null;
-
-    function resetForm() {
-      editingEvalId = null;
-      document.getElementById("evalFormTitle").textContent = "New evaluation";
-      document.getElementById("editingHint").style.display = "none";
-      document.getElementById("createEvalBtn").textContent = "Create evaluation";
-      document.getElementById("evalTitle").value = "";
-      criteriaRows.innerHTML = "";
-      scaleRows.innerHTML = "";
-      ["Participation", "Punctuality", "Quality of Work", "Cooperation"].forEach(c =>
-        criteriaRows.appendChild(criterionRow(c))
-      );
-      [[0, "Unacceptable"], [1, "Poor"], [2, "Fair"], [3, "Good"], [4, "Excellent"]].forEach(([v, l]) =>
-        scaleRows.appendChild(scaleRow(v, l))
-      );
-    }
-
-    async function startEditing(evalId) {
-      hideError(evalError);
-      const ev = await api(`/courses/${courseId}/evaluations/${evalId}`);
-      editingEvalId = evalId;
-      document.getElementById("evalFormTitle").textContent = `Editing "${ev.title}"`;
-      document.getElementById("editingHint").style.display = "block";
-      document.getElementById("createEvalBtn").textContent = "Save changes";
-      document.getElementById("evalTitle").value = ev.title;
-      criteriaRows.innerHTML = "";
-      scaleRows.innerHTML = "";
-      ev.criteria.forEach(c => criteriaRows.appendChild(criterionRow(c.name)));
-      ev.scale.forEach(s => scaleRows.appendChild(scaleRow(s.value, s.label)));
-      document.getElementById("evalTitle").scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-
-    document.getElementById("cancelEditBtn").addEventListener("click", resetForm);
-
-    async function loadCourse() {
-      const course = await api(`/courses/${courseId}`);
-      document.getElementById("courseName").textContent = course.name;
-      document.getElementById("courseEyebrow").textContent = `Course #${course.id}`;
-    }
-
-    async function loadGroups() {
-      const groups = await api(`/courses/${courseId}/groups`);
-      const el = document.getElementById("groupsList");
-      if (groups.length === 0) {
-        el.innerHTML = `<p class="hint">No groups uploaded yet.</p>`;
-        return;
-      }
-      el.innerHTML = groups.map(g => `
-        <div style="margin-bottom:14px">
-          <strong>${g.group_label}</strong>
-          <span class="hint">(${g.students.length} students)</span>
-          <div class="hint">${g.students.map(s => s.name).join(", ")}</div>
+    <!-- Appbar -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
+            <!-- Mobile: back chevron + current course name only — the full
+                 breadcrumb trail plus badge plus two buttons doesn't fit on
+                 narrow screens, so it's swapped for a simple "go up one
+                 level" affordance instead. -->
+            <a href="dashboard.html" class="flex sm:hidden items-center gap-1.5 min-w-0 text-slate-700">
+                <i data-lucide="chevron-left" class="w-5 h-5 shrink-0"></i>
+                <span id="courseCrumbMobile" class="text-sm font-bold truncate">Loading...</span>
+            </a>
+            <!-- Tablet/desktop: full breadcrumb -->
+            <div class="hidden sm:flex items-center gap-3 min-w-0">
+                <a class="brand text-xl shrink-0" href="../index.html">Peer<span class="text-orange-600">Eval</span></a>
+                <span class="text-slate-300">/</span>
+                <a href="dashboard.html" class="text-sm font-medium text-slate-500 hover:text-slate-800 shrink-0">Courses</a>
+                <span class="text-slate-300">/</span>
+                <span id="courseCrumb" class="text-sm font-bold text-slate-900 truncate">Loading...</span>
+            </div>
+            <div class="flex items-center gap-2 sm:gap-4 shrink-0">
+                <span id="courseEyebrow" class="hidden md:block text-[10px] font-bold bg-slate-100 px-2 py-1 rounded text-slate-500 uppercase tracking-tighter">ID: --</span>
+                <a class="hidden sm:flex btn btn--ghost btn--sm" href="dashboard.html"><i data-lucide="layout-grid" class="w-4 h-4"></i> Back</a>
+                <button class="btn btn--ghost btn--sm" id="logoutBtn"><i data-lucide="log-out" class="w-4 h-4"></i> <span class="hidden sm:inline">Log out</span></button>
+            </div>
         </div>
-      `).join("");
-    }
+    </header>
 
-    document.getElementById("uploadBtn").addEventListener("click", async () => {
-      hideError(uploadError);
-      const fileInput = document.getElementById("groupsFile");
-      if (!fileInput.files.length) { showError(uploadError, new Error("Choose a file first.")); return; }
-      const form = new FormData();
-      form.append("file", fileInput.files[0]);
-      try {
-        const result = await api(`/courses/${courseId}/groups/upload`, { method: "POST", body: form });
-        if (result.warnings && result.warnings.length) {
-          showError(uploadError, new Error(result.warnings.join(" | ")));
-        }
-        await loadGroups();
-      } catch (err) {
-        showError(uploadError, err);
-      }
-    });
+    <main class="max-w-7xl mx-auto px-4 py-8 flex flex-col md:flex-row gap-8">
 
-    document.getElementById("createEvalBtn").addEventListener("click", async () => {
-      hideError(evalError);
-      const title = document.getElementById("evalTitle").value.trim();
-      const criteria = [...document.querySelectorAll(".criterion-input")]
-        .map(i => i.value.trim()).filter(Boolean);
-      const scale = [...scaleRows.children].map(row => ({
-        value: parseInt(row.querySelector(".scale-value").value, 10),
-        label: row.querySelector(".scale-label").value.trim(),
-      })).filter(s => s.label && !Number.isNaN(s.value));
+        <!-- Sidebar Navigation -->
+        <aside class="w-full md:w-64 shrink-0">
+            <nav class="section-nav sidebar-nav flex md:flex-col gap-1 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm md:sticky md:top-24">
+                <button class="section-nav__item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all hover:bg-slate-50" data-section="evaluations">
+                    <i data-lucide="clipboard-list" class="w-5 h-5"></i>
+                    <span class="font-bold text-sm">Evaluations</span>
+                </button>
+                <button class="section-nav__item w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all hover:bg-slate-50" data-section="classes">
+                    <i data-lucide="graduation-cap" class="w-5 h-5"></i>
+                    <span class="font-bold text-sm">Classes</span>
+                </button>
+                <div class="hidden md:block h-px bg-slate-100 my-1 mx-1"></div>
+                <button id="newEvalBtn" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all bg-orange-50 text-orange-700 hover:bg-orange-100">
+                    <i data-lucide="plus" class="w-5 h-5"></i>
+                    <span class="font-bold text-sm">New Eval</span>
+                </button>
+            </nav>
+        </aside>
 
-      try {
-        if (!title) throw new Error("Title is required.");
-        if (editingEvalId) {
-          await api(`/courses/${courseId}/evaluations/${editingEvalId}`, {
-            method: "PATCH",
-            body: JSON.stringify({ title, criteria, scale }),
-          });
-        } else {
-          await api(`/courses/${courseId}/evaluations`, {
-            method: "POST",
-            body: JSON.stringify({ title, criteria, scale }),
-          });
-        }
-        resetForm();
-        await loadEvaluations();
-      } catch (err) {
-        showError(evalError, err);
-      }
-    });
+        <!-- Main Workspace -->
+        <div class="flex-1 space-y-8">
 
-    async function loadEvaluations() {
-      const evals = await api(`/courses/${courseId}/evaluations`);
-      const el = document.getElementById("evalsList");
-      if (evals.length === 0) {
-        el.innerHTML = `<p class="hint">No evaluations yet — create one above.</p>`;
-        return;
-      }
-      el.innerHTML = "";
-      evals.forEach(ev => {
-        const div = document.createElement("div");
-        div.className = "list-item";
-        div.innerHTML = `
-          <div>
-            <strong>${ev.title}</strong>
-            <span class="pill ${ev.status === 'open' ? 'pill--good' : 'pill--warn'}">${ev.status}</span>
-          </div>
-          <div class="row">
-            <button class="btn btn--ghost btn--sm edit-btn">Edit</button>
-            <button class="btn btn--ghost btn--sm link-btn">Link / QR</button>
-            <a class="btn btn--ghost btn--sm" href="results.html?course=${courseId}&evaluation=${ev.id}">Results</a>
-          </div>
-        `;
-        div.querySelector(".edit-btn").addEventListener("click", () => startEditing(ev.id));
-        div.querySelector(".link-btn").addEventListener("click", () => showLink(ev.id, div));
-        el.appendChild(div);
-      });
-    }
+            <!-- SECTION: EVALUATIONS (default view — full history, open + closed) -->
+            <section class="section-panel space-y-6" data-section="evaluations">
+                <h1 id="courseName" class="text-3xl font-bold text-slate-900">Course Name</h1>
 
-    async function showLink(evalId, container) {
-      let box = container.querySelector(".qr-box");
-      if (box) { box.remove(); return; }
-      const data = await api(`/courses/${courseId}/evaluations/${evalId}/link`);
-      box = document.createElement("div");
-      box.className = "qr-box";
-      box.style.marginTop = "10px";
-      box.innerHTML = `
-        <p class="hint" style="word-break:break-all">${data.link}</p>
-        <img src="data:image/png;base64,${data.qr_code_png_base64}" width="140" height="140">
-      `;
-      container.appendChild(box);
-    }
+                <div id="evalsList" class="space-y-3">
+                    <!-- Dynamic Cards -->
+                </div>
+            </section>
 
-    api("/auth/me").then(me => {
-      if (!me.authenticated) { window.location.href = "login.html"; return; }
-      resetForm();
-      loadCourse();
-      loadGroups();
-      loadEvaluations();
-    });
-  </script>
+            <!-- SECTION: BUILDER (opened via sidebar "New Eval" or a card's Settings button — not a persistent tab) -->
+            <section class="section-panel space-y-6" data-section="builder">
+                <button id="backToEvalsBtn" class="text-sm font-bold text-slate-400 hover:text-slate-700 flex items-center gap-1">
+                    <i data-lucide="arrow-left" class="w-4 h-4"></i> Back to Evaluations
+                </button>
+
+                <!-- Evaluation Builder Card -->
+                <div id="evalBuilder" class="bg-white rounded-3xl border-2 border-slate-200 p-5 sm:p-8 shadow-sm transition-all focus-within:border-orange-600">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h3 id="evalFormTitle" class="text-xl font-bold">New Evaluation</h3>
+                            <p class="text-sm text-slate-400" id="editingHint">Configure your criteria and scoring scale below.</p>
+                        </div>
+                        <button class="btn btn--ghost btn--sm hidden" id="cancelEditBtn">Discard Changes</button>
+                    </div>
+
+                    <div class="space-y-6">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Class</label>
+                            <select id="evalClass" class="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-orange-600/20 focus:border-orange-600">
+                                <option value="">Loading classes...</option>
+                            </select>
+                            <p class="text-[11px] text-slate-400 mt-1.5" id="evalClassHint">Which class's roster this evaluation runs against. Can't be changed after creation.</p>
+                        </div>
+
+                        <div class="grid sm:grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Evaluation Title</label>
+                                <input type="text" id="evalTitle" placeholder="e.g. Midterm Peer Review" class="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-orange-600/20 focus:border-orange-600">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Deadline <span class="normal-case font-medium text-slate-400">(optional)</span></label>
+                                <input type="datetime-local" id="evalDeadline" class="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-orange-600/20 focus:border-orange-600">
+                                <p class="text-[11px] text-slate-400 mt-1.5">The link auto-closes at this time — students see "Peer evaluation has closed". Leave blank to close it manually instead.</p>
+                            </div>
+                        </div>
+
+                        <div class="grid md:grid-cols-2 gap-8">
+                            <!-- Criteria Column -->
+                            <div class="space-y-4">
+                                <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest">Assessment Criteria</label>
+                                <div id="criteriaRows" class="space-y-2">
+                                    <!-- Dynamic -->
+                                </div>
+                                <button class="w-full py-2 border-2 border-dashed border-slate-200 rounded-xl text-xs font-bold text-slate-400 hover:bg-slate-50" id="addCriterion">
+                                    + Add Criterion
+                                </button>
+                            </div>
+
+                            <!-- Scale Column -->
+                            <div class="space-y-4">
+                                <div class="flex items-center justify-between">
+                                    <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest">Rating Scale</label>
+                                    <select id="scalePreset" class="text-xs font-bold border border-slate-200 rounded-lg px-2 py-1 bg-slate-50 text-slate-600 outline-none focus:border-orange-600">
+                                        <option value="distinguished">Distinguished / Proficient / Basic / Unacceptable</option>
+                                        <option value="satisfactory">Excellent–Outstanding / Above Satisfactory / Satisfactory / Below Satisfactory / Unacceptable</option>
+                                        <option value="simple3">Unacceptable / Fair / Outstanding</option>
+                                        <option value="custom">Custom (edited below)</option>
+                                    </select>
+                                </div>
+                                <p class="text-[11px] text-slate-400 -mt-2">Picking a preset fills the rows below — you can still edit any label or value afterward.</p>
+                                <div id="scaleRows" class="space-y-2">
+                                    <!-- Dynamic -->
+                                </div>
+                                <button class="w-full py-2 border-2 border-dashed border-slate-200 rounded-xl text-xs font-bold text-slate-400 hover:bg-slate-50" id="addScalePoint">
+                                    + Add Point
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="pt-6 border-t border-slate-100 flex items-center justify-between">
+                            <div id="evalError" class="text-red-500 text-sm font-medium hidden"></div>
+                            <button class="btn btn--clay px-8" id="createEvalBtn">Create Evaluation</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION: CLASSES -->
+            <section class="section-panel space-y-6" data-section="classes">
+                <div class="bg-white rounded-3xl border border-slate-200 p-5 sm:p-8 shadow-sm">
+                    <h3 class="text-xl font-bold mb-2">Classes</h3>
+                    <p class="text-sm text-slate-500 mb-4">Each class holds its own student roster and its own evaluations — use this when the same course is taught to more than one year group or section at once. A student roster and its results never cross between classes.</p>
+                    <div class="flex flex-col sm:flex-row gap-3">
+                        <input type="text" id="newClassName" placeholder="e.g. 2026 Level 300" class="flex-1 p-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-orange-600/20 focus:border-orange-600">
+                        <button class="btn btn--clay shrink-0" id="createClassBtn">+ New Class</button>
+                    </div>
+                    <div id="createClassError" class="text-red-500 text-sm font-medium hidden mt-2"></div>
+                </div>
+
+                <div id="classesList" class="space-y-3">
+                    <!-- Dynamic class cards -->
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <!-- Modal for Link/QR -->
+    <div id="linkModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md rounded-3xl p-6 sm:p-8 shadow-2xl relative animate-bounce-in">
+            <button onclick="closeModal()" class="absolute right-6 top-6 text-slate-400 hover:text-slate-600"><i data-lucide="x"></i></button>
+            <h3 class="text-2xl font-bold mb-2">Evaluation Link</h3>
+            <p class="text-sm text-slate-500 mb-6">Share this URL or QR code with your students.</p>
+            
+            <div id="modalContent" class="space-y-6">
+                <div class="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between gap-2 overflow-hidden">
+                    <span id="shareLink" class="text-xs font-mono text-slate-500 truncate"></span>
+                    <button onclick="copyLink()" class="text-orange-600 font-bold text-xs uppercase shrink-0">Copy</button>
+                </div>
+                <div class="flex flex-col items-center gap-4 p-4 bg-white rounded-2xl border border-slate-100 shadow-inner">
+                    <img id="qrImage" src="" alt="QR Code" class="w-48 h-48">
+                    <button onclick="downloadQr()" class="btn btn--ghost btn--sm"><i data-lucide="download" class="w-4 h-4"></i> Download QR Code</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/api.js?v=20260817"></script>
+    <script src="course.js?v=20260817"></script>
+    <script>lucide.createIcons();</script>
 </body>
 </html>

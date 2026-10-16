@@ -1,131 +1,218 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Results — PeerEval</title>
-<link rel="stylesheet" href="../css/style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Results — PeerEval</title>
+    <!-- Modern UI Stack -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="../css/style.css?v=20260818">
+    <style type="text/tailwindcss">
+        /* Custom overrides to blend Tailwind with your style.css */
+        .kpi-card { @apply bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4; }
+        .tab-btn { @apply px-6 py-3 font-semibold text-sm transition-all border-b-2 border-transparent; }
+        .tab-btn.is-active { @apply border-orange-600 text-orange-600 bg-orange-50/50; }
+        .status-ring { transition: stroke-dashoffset 0.5s ease; }
+        .ranking-filter-btn { @apply text-slate-500; }
+        .ranking-filter-btn.is-active { @apply bg-white text-orange-600 shadow-sm; }
+        .matrix-table { border-collapse: collapse; font-size: 0.8rem; }
+        .matrix-table th, .matrix-table td { border: 1px solid #e2e8f0; padding: 8px 12px; text-align: center; white-space: nowrap; }
+        .matrix-corner { background: #f8fafc; }
+        .matrix-colhead { @apply bg-slate-50 text-slate-600 font-semibold text-xs; max-width: 140px; white-space: normal; }
+        .matrix-rowhead { @apply bg-slate-50 text-slate-800 font-bold text-xs text-left; position: sticky; left: 0; }
+        .matrix-cell { @apply font-semibold text-slate-700 bg-white; }
+        .matrix-cell--self { background: #fde047; color: #78350f; }
+        .matrix-cell--missing { background: #ef4444; color: white; }
+    </style>
 </head>
-<body>
-  <div class="topbar">
-    <a class="brand" href="../index.html">Peer<span>Eval</span></a>
-    <a class="btn btn--ghost btn--sm" id="backLink" href="#">Back to course</a>
-  </div>
-  <div class="wrap">
-    <span class="eyebrow">Results</span>
-    <h1 id="evalTitle">Loading…</h1>
+<body class="bg-slate-50 min-h-screen">
 
-    <div class="card">
-      <h3>Completion</h3>
-      <div id="completionList" class="hint">Loading…</div>
-    </div>
-
-    <div class="card">
-      <div class="row row--between">
-        <h3>Averages per student</h3>
-        <a class="btn btn--ghost btn--sm" id="exportBtn" href="#">Export CSV</a>
-      </div>
-      <div class="table-scroll">
-        <table id="aggTable">
-          <thead><tr id="aggHead"></tr></thead>
-          <tbody id="aggBody"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="row row--between">
-        <h3>Individual evaluator scores</h3>
-        <button class="btn btn--ghost btn--sm" id="toggleIndividual">Show</button>
-      </div>
-      <div id="individualWrap" style="display:none; margin-top:12px">
-        <div class="table-scroll">
-          <table id="indTable">
-            <thead><tr><th>Evaluator</th><th>Rated</th><th>Criterion</th><th>Score</th></tr></thead>
-            <tbody id="indBody"></tbody>
-          </table>
+    <!-- Appbar -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
+            <!-- Mobile: back chevron + current page only — the full breadcrumb
+                 trail doesn't fit next to Log out on narrow screens, so it's
+                 swapped for a simple "go up one level" affordance instead. -->
+            <a href="#" id="backLinkMobile" class="flex sm:hidden items-center gap-1.5 min-w-0 text-slate-700">
+                <i data-lucide="chevron-left" class="w-5 h-5 shrink-0"></i>
+                <span class="text-sm font-bold truncate">Results</span>
+            </a>
+            <!-- Tablet/desktop: full breadcrumb -->
+            <div class="hidden sm:flex items-center gap-3 min-w-0">
+                <a class="brand text-xl shrink-0" href="../index.html">Peer<span class="text-orange-600">Eval</span></a>
+                <span class="text-slate-300">/</span>
+                <a href="dashboard.html" class="text-sm font-medium text-slate-500 hover:text-slate-800 shrink-0">Courses</a>
+                <span class="text-slate-300">/</span>
+                <a href="#" id="backLink" class="text-sm font-medium text-slate-500 hover:text-slate-800 truncate">Course</a>
+                <span class="text-slate-300">/</span>
+                <span class="text-sm font-bold text-slate-900 shrink-0">Results</span>
+            </div>
+            <button class="btn btn--ghost btn--sm shrink-0" id="logoutBtn"><i data-lucide="log-out" class="w-4 h-4"></i> <span class="hidden sm:inline">Log out</span></button>
         </div>
-      </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 py-8">
+        <div class="mb-8">
+            <span class="eyebrow text-orange-600">Analytics Dashboard</span>
+            <h1 id="evalTitle" class="text-3xl font-bold text-slate-900">Loading Evaluation...</h1>
+        </div>
+
+        <!-- KPI Row (+ Export, stacks below the KPIs on small screens) -->
+        <div class="flex flex-col lg:flex-row gap-6 mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 flex-1">
+                <div class="kpi-card">
+                    <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
+                        <i data-lucide="check-circle"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm text-slate-500 font-medium">Completion Rate</p>
+                        <h3 id="statCompletion" class="text-2xl font-bold">0%</h3>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-green-600">
+                        <i data-lucide="bar-chart-3"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm text-slate-500 font-medium">Class Average</p>
+                        <h3 id="statAvg" class="text-2xl font-bold">0.00</h3>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600">
+                        <i data-lucide="sigma"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm text-slate-500 font-medium">Total Class Average</p>
+                        <h3 id="statTotalAvg" class="text-2xl font-bold">0.00</h3>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center text-amber-600">
+                        <i data-lucide="alert-triangle"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm text-slate-500 font-medium">Potential Conflicts</p>
+                        <h3 id="statConflicts" class="text-2xl font-bold">0</h3>
+                    </div>
+                </div>
+            </div>
+            <a id="exportBtn" href="#" class="kpi-card lg:w-56 justify-center bg-white hover:bg-slate-50 transition-colors border-dashed">
+                <div class="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center text-orange-600">
+                    <i data-lucide="download"></i>
+                </div>
+                <div>
+                    <p class="text-sm font-bold text-slate-800">Export Excel</p>
+                    <p class="text-xs text-slate-400">Averages + colored matrix</p>
+                </div>
+            </a>
+        </div>
+
+        <!-- Tab System -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <nav class="flex border-b border-slate-200 section-nav">
+                <button class="tab-btn section-nav__item" data-section="averages">
+                    <div class="flex items-center gap-2"><i data-lucide="layout-list" class="w-4 h-4"></i> Performance Table</div>
+                </button>
+                <button class="tab-btn section-nav__item" data-section="rankings">
+                    <div class="flex items-center gap-2"><i data-lucide="trophy" class="w-4 h-4"></i> Rankings</div>
+                </button>
+                <button class="tab-btn section-nav__item" data-section="matrix">
+                    <div class="flex items-center gap-2"><i data-lucide="grid-3x3" class="w-4 h-4"></i> Matrix</div>
+                </button>
+                <button class="tab-btn section-nav__item" data-section="completion">
+                    <div class="flex items-center gap-2"><i data-lucide="users" class="w-4 h-4"></i> Group Status</div>
+                </button>
+            </nav>
+
+            <!-- Averages Panel (Master Table) -->
+            <section class="section-panel p-6" data-section="averages">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-lg font-bold">Student Performance Breakdown</h3>
+                    <div class="text-xs text-slate-400 italic font-mono uppercase tracking-widest">Live Data</div>
+                </div>
+                <div class="overflow-x-auto rounded-lg border border-slate-100">
+                    <table class="w-full text-left border-collapse" id="aggTable">
+                        <thead class="bg-slate-50 border-b border-slate-200">
+                            <tr id="aggHead">
+                                <!-- Dynamic -->
+                            </tr>
+                        </thead>
+                        <tbody id="aggBody" class="divide-y divide-slate-100">
+                            <!-- Dynamic -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Rankings Panel (Top / Bottom by Total) -->
+            <section class="section-panel p-6" data-section="rankings">
+                <div class="flex flex-wrap justify-between items-center gap-4 mb-6">
+                    <h3 class="text-lg font-bold">Top &amp; Bottom Rated Students</h3>
+                    <div class="inline-flex rounded-lg border border-slate-200 p-1 bg-slate-50" id="rankingFilter">
+                        <button class="ranking-filter-btn px-4 py-1.5 text-sm font-semibold rounded-md transition-colors" data-rank="top">Top 10</button>
+                        <button class="ranking-filter-btn px-4 py-1.5 text-sm font-semibold rounded-md transition-colors" data-rank="bottom">Bottom 10</button>
+                    </div>
+                </div>
+                <div class="overflow-x-auto rounded-lg border border-slate-100">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-slate-50 border-b border-slate-200">
+                            <tr>
+                                <th class="p-4 text-xs font-bold text-slate-500 uppercase w-16">Rank</th>
+                                <th class="p-4 text-xs font-bold text-slate-500 uppercase">Student</th>
+                                <th class="p-4 text-xs font-bold text-slate-500 uppercase">Group</th>
+                                <th class="p-4 text-xs font-bold text-slate-500 uppercase text-center">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rankingBody" class="divide-y divide-slate-100">
+                            <!-- Dynamic -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Completion Panel -->
+            <section class="section-panel p-6" data-section="completion">
+                <div id="completionGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <!-- Dynamic Group Cards -->
+                </div>
+            </section>
+
+            <!-- Matrix Panel: one evaluator x ratee grid per group -->
+            <section class="section-panel p-6" data-section="matrix">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-lg font-bold">Evaluator × Rated Matrix</h3>
+                    <div class="text-xs text-slate-400 italic font-mono uppercase tracking-widest">Live Data</div>
+                </div>
+                <div class="flex items-center gap-4 mb-6 text-xs text-slate-500">
+                    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm inline-block" style="background:#fde047"></span> Self</span>
+                    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm inline-block" style="background:#ef4444"></span> Didn't submit / didn't rate this person</span>
+                    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm inline-block bg-white border border-slate-300"></span> Total score given</span>
+                </div>
+                <div id="matrixContainer" class="space-y-6">
+                    <!-- Dynamic per-group matrix cards -->
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Side Drawer for Individual Breakdown (Hidden by default) -->
+    <div id="detailDrawer" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] hidden flex justify-end">
+        <div class="w-full max-w-2xl bg-white h-full shadow-2xl p-6 sm:p-8 overflow-y-auto animate-slide-in">
+            <div class="flex justify-between items-center mb-6">
+                <h2 id="drawerTitle" class="text-2xl font-bold">Student Details</h2>
+                <button onclick="closeDrawer()" class="p-2 hover:bg-slate-100 rounded-full"><i data-lucide="x"></i></button>
+            </div>
+            <div id="drawerContent">
+                <!-- Detailed individual ratings go here -->
+            </div>
+        </div>
     </div>
-  </div>
 
-  <script src="../js/api.js"></script>
-  <script>
-    const courseId = qs("course");
-    const evalId = qs("evaluation");
-    if (!courseId || !evalId) window.location.href = "dashboard.html";
-    document.getElementById("backLink").href = `course.html?course=${courseId}`;
-
-    document.getElementById("exportBtn").href = `${API_BASE}/courses/${courseId}/evaluations/${evalId}/results/export.csv`;
-
-    async function loadCompletion() {
-      const groups = await api(`/courses/${courseId}/evaluations/${evalId}/completion`);
-      const el = document.getElementById("completionList");
-      el.innerHTML = groups.map(g => {
-        const submitted = g.students.filter(s => s.has_submitted).length;
-        const rows = g.students.map(s => `
-          <div class="list-item">
-            <span>${s.name} <span class="hint">(${s.student_id})</span></span>
-            <span class="pill ${s.has_submitted ? 'pill--good' : 'pill--warn'}">
-              ${s.has_submitted ? "Submitted" : "Pending"}
-            </span>
-          </div>
-        `).join("");
-        return `<div style="margin-bottom:16px">
-          <strong>${g.group_label}</strong>
-          <span class="hint">(${submitted}/${g.students.length} submitted)</span>
-          ${rows}
-        </div>`;
-      }).join("");
-    }
-
-    async function loadResults() {
-      const data = await api(`/courses/${courseId}/evaluations/${evalId}/results`);
-
-      const aggHead = document.getElementById("aggHead");
-      aggHead.innerHTML = `<th>Student</th>` +
-        data.criteria.map(c => `<th>${c.name}</th>`).join("") +
-        `<th>Overall</th>`;
-
-      const aggBody = document.getElementById("aggBody");
-      if (data.aggregates.length === 0) {
-        aggBody.innerHTML = `<tr><td colspan="${data.criteria.length + 2}" class="hint">No submissions yet.</td></tr>`;
-      } else {
-        aggBody.innerHTML = data.aggregates.map(s => {
-          const byName = Object.fromEntries(s.by_criterion.map(c => [c.criterion, c.average]));
-          return `<tr>
-            <td>${s.name}</td>
-            ${data.criteria.map(c => `<td>${byName[c.name] ?? "—"}</td>`).join("")}
-            <td><strong>${s.overall_average ?? "—"}</strong></td>
-          </tr>`;
-        }).join("");
-      }
-
-      const indBody = document.getElementById("indBody");
-      indBody.innerHTML = data.individual_scores.map(r => `
-        <tr>
-          <td>${r.evaluator_name}</td>
-          <td>${r.ratee_name}</td>
-          <td>${r.criterion}</td>
-          <td>${r.score}</td>
-        </tr>
-      `).join("");
-    }
-
-    document.getElementById("toggleIndividual").addEventListener("click", (e) => {
-      const wrap = document.getElementById("individualWrap");
-      const showing = wrap.style.display !== "none";
-      wrap.style.display = showing ? "none" : "block";
-      e.target.textContent = showing ? "Show" : "Hide";
-    });
-
-    api("/auth/me").then(async me => {
-      if (!me.authenticated) { window.location.href = "login.html"; return; }
-      const ev = await api(`/courses/${courseId}/evaluations/${evalId}`);
-      document.getElementById("evalTitle").textContent = ev.title;
-      await loadCompletion();
-      await loadResults();
-    });
-  </script>
+    <script src="../js/api.js?v=20260817"></script>
+    <script src="results.js?v=20260817"></script>
+    <script>lucide.createIcons();</script>
 </body>
 </html>

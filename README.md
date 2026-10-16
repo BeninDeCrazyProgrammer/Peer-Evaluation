@@ -22,18 +22,34 @@ backend/
   app.py                 Flask app factory
   db.py                  DB connection (local SQLite / Turso, same code path)
   models.py              Schema (run directly to (re)create tables)
-  auth.py                Lecturer auth: email/password + Google OAuth
+  auth.py 
+  .env
+  reqiurements.txt
+  db/
+    local.db               Lecturer auth: email/password + Google OAuth
   routes/
     courses.py
     groups.py             Excel upload/parse
     evaluations.py        Criteria + scale, creation, link/QR
     submissions.py        Student lookup, submit
     dashboard.py          Completion tracking, results
-  utils/excel_parser.py  Groups spreadsheet parser
+  utils/
+    excel_parser.py  Groups spreadsheet parser
 frontend/
   index.html
-  lecturer/               login, dashboard, course detail, results
-  student/                evaluate.html
+  lecturer/  
+    course.html
+    course.js
+    dashboard.html
+    dashboard.js
+    login.html
+    login.js
+    results.html
+    results.js
+                 login, dashboard, course detail, results
+  student/ 
+    evaluate.html
+    evaluate.js               evaluate.html
   css/style.css
   js/api.js               <- API_BASE lives here
 ```

@@ -4,11 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dashboard — PeerEval</title>
-<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="../css/style.css?v=20260818">
 </head>
 <body>
-  <div class="topbar">
-    <a class="brand" href="../index.html">Peer<span>Eval</span></a>
+  <div class="appbar">
+    <div class="appbar__crumbs">
+      <a class="brand" href="../index.html">Peer<span>Eval</span></a>
+      <span class="sep">/</span>
+      <span class="current">Courses</span>
+    </div>
     <div class="row">
       <span class="hint" id="whoami"></span>
       <button class="btn btn--ghost btn--sm" id="logoutBtn">Log out</button>
@@ -33,60 +37,7 @@
     </div>
   </div>
 
-  <script src="../js/api.js"></script>
-  <script>
-    const createError = document.getElementById("createError");
-
-    async function checkAuth() {
-      const me = await api("/auth/me");
-      if (!me.authenticated) {
-        window.location.href = "login.html";
-        return;
-      }
-      document.getElementById("whoami").textContent = `${me.name} (${me.email})`;
-    }
-
-    async function loadCourses() {
-      const courses = await api("/courses");
-      const list = document.getElementById("coursesList");
-      if (courses.length === 0) {
-        list.innerHTML = `<p class="hint">No courses yet — create one above.</p>`;
-        return;
-      }
-      list.innerHTML = "";
-      courses.forEach(c => {
-        const div = document.createElement("div");
-        div.className = "list-item";
-        div.innerHTML = `
-          <div>
-            <strong>${c.name}</strong><br>
-            <span class="hint">Created ${new Date(c.created_at).toLocaleDateString()}</span>
-          </div>
-          <a class="btn btn--ghost btn--sm" href="course.html?course=${c.id}">Open</a>
-        `;
-        list.appendChild(div);
-      });
-    }
-
-    document.getElementById("createCourseBtn").addEventListener("click", async () => {
-      hideError(createError);
-      const name = document.getElementById("courseName").value.trim();
-      if (!name) { showError(createError, new Error("Course name is required.")); return; }
-      try {
-        await api("/courses", { method: "POST", body: JSON.stringify({ name }) });
-        document.getElementById("courseName").value = "";
-        await loadCourses();
-      } catch (err) {
-        showError(createError, err);
-      }
-    });
-
-    document.getElementById("logoutBtn").addEventListener("click", async () => {
-      await api("/auth/logout", { method: "POST" });
-      window.location.href = "login.html";
-    });
-
-    checkAuth().then(loadCourses).catch(() => { window.location.href = "login.html"; });
-  </script>
+  <script src="../js/api.js?v=20260817"></script>
+  <script src="dashboard.js?v=20260817"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 import os
-from flask import Flask
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
 
@@ -7,24 +7,50 @@ load_dotenv()
 
 from auth import auth_bp, init_auth
 from routes.courses import courses_bp
+from routes.classes import classes_bp
 from routes.groups import groups_bp
 from routes.evaluations import evaluations_bp
 from routes.submissions import submissions_bp
 from routes.dashboard import dashboard_bp
 from models import init_db
-
+from rate_limit import limiter
+from csrf import csrf_protect, ensure_csrf_cookie
 
 def create_app():
     app = Flask(__name__, static_folder=None)
-    app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-only-change-me")
-
+    # Applies to every request body app-wide (not just uploads) — the group
+    # roster spreadsheet is the only large payload this app expects, so 10MB
+    # comfortably covers a real roster while still stopping a worker from
+    # getting tied up parsing something huge or malformed.
+    app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
     local_dev = os.environ.get("LOCAL_DEV", "").lower() in ("1", "true", "yes")
 
+    secret_key = os.environ.get("SECRET_KEY")
+    if not secret_key:
+        if local_dev:
+            secret_key = "dev-only-change-me"
+        else:
+            # Signing session cookies with a guessable default in production
+            # means anyone can forge a login session. Fail loudly at startup
+            # instead of silently running insecure.
+            raise RuntimeError(
+                "SECRET_KEY is not set. Refusing to start in production without one — "
+                "set it in your environment (Render dashboard, not .env)."
+            )
+    app.config["SECRET_KEY"] = secret_key
+
+    # Global CORS configuration
+    origins = ["https://benindecrazyprogrammer.github.io"]
+    if os.environ.get("FRONTEND_URL"):
+        origins.append(os.environ.get("FRONTEND_URL").rstrip("/"))
+
+    CORS(app, supports_credentials=True, origins=origins)
+
     if local_dev:
-        # Same-origin locally (frontend served by this same Flask process)
-        # — the default cookie rules just work, no https needed.
         app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
         app.config["SESSION_COOKIE_SECURE"] = False
+        # Serve frontend/ from this same Flask process so local testing is
+        # same-origin (no cross-site cookie rules to fight without HTTPS).
         frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")
         app.static_folder = frontend_dir
         app.static_url_path = ""
@@ -38,28 +64,59 @@ def create_app():
                 return send_from_directory(frontend_dir, "index.html")
             return send_from_directory(frontend_dir, path)
     else:
-        # Production: cross-origin (GH Pages <-> Render), both https.
         app.config["SESSION_COOKIE_SAMESITE"] = "None"
         app.config["SESSION_COOKIE_SECURE"] = True
 
-    CORS(app, supports_credentials=True, origins=[os.environ.get("FRONTEND_URL", "*")])
-
     init_auth(app)
-    init_db()
+    limiter.init_app(app)
 
+    app.before_request(csrf_protect)
+    app.after_request(lambda response: ensure_csrf_cookie(response, local_dev))
+
+    with app.app_context():
+        init_db()
+
+    # Register Blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(courses_bp)
+    app.register_blueprint(classes_bp)
     app.register_blueprint(groups_bp)
     app.register_blueprint(evaluations_bp)
     app.register_blueprint(submissions_bp)
     app.register_blueprint(dashboard_bp)
+
+    # --- Global error handler: keeps error responses as clean JSON instead of
+    # an HTML traceback page, without swallowing the real status code. ---
+    from werkzeug.exceptions import HTTPException
+
+    @app.errorhandler(Exception)
+    def handle_exception(e):
+        if isinstance(e, HTTPException):
+            # e.g. flask-login's 401 on @login_required, a 404 from an
+            # unmatched route, a 405 on the wrong HTTP verb — these already
+            # have the correct status/message, so pass them through as-is
+            # rather than flattening everything to 500.
+            response = jsonify({"error": e.description})
+            response.status_code = e.code
+        else:
+            # A genuine unhandled exception (bug, DB error, etc.) — the real
+            # detail goes to the server log only. Returning str(e) to the
+            # client here would leak SQL fragments, file paths, or other
+            # internals to whoever triggered the error.
+            print(f"SERVER CRASH: {e}")
+            response = jsonify({"error": "Something went wrong on our end. Please try again."})
+            response.status_code = 500
+        request_origin = request.headers.get("Origin")
+        if request_origin in origins:
+            response.headers.add("Access-Control-Allow-Origin", request_origin)
+            response.headers.add("Access-Control-Allow-Credentials", "true")
+        return response
 
     @app.route("/health")
     def health():
         return {"status": "ok"}
 
     return app
-
 
 app = create_app()
 

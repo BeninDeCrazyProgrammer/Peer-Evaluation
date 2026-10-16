@@ -1,137 +1,144 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Evaluate — PeerEval</title>
-<link rel="stylesheet" href="../css/style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evaluate — PeerEval</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="../css/style.css?v=20260818">
+    <style type="text/tailwindcss">
+        .rating-pill { @apply flex-1 py-3 px-2 border-2 border-slate-200 rounded-xl text-sm font-bold transition-all text-slate-600 bg-white hover:border-orange-200; }
+        .rating-pill.is-active { @apply border-orange-600 bg-orange-600 text-white shadow-md shadow-orange-200; }
+        .step-indicator { @apply w-3 h-3 rounded-full bg-slate-200 transition-all; }
+        .step-indicator.is-active { @apply bg-orange-600 w-8; }
+        .step-indicator.is-complete { @apply bg-green-500; }
+    </style>
 </head>
-<body>
-  <div class="topbar">
-    <a class="brand" href="../index.html">Peer<span>Eval</span></a>
-  </div>
-  <div class="wrap">
-    <span class="eyebrow" id="courseEyebrow">Peer Evaluation</span>
-    <h1 id="evalTitle">Loading…</h1>
+<body class="bg-slate-50 min-h-screen">
 
-    <div class="card" id="identifyCard">
-      <h3>Who are you?</h3>
-      <p class="hint">Enter your student ID or full name exactly as it appears on the group list.</p>
-      <label>ID or name</label>
-      <input type="text" id="identifier" placeholder="e.g. 10984191 or Jane Doe">
-      <div class="row" style="margin-top:16px">
-        <button class="btn" id="findBtn">Continue</button>
-      </div>
-      <div class="error-box" id="identifyError" style="display:none"></div>
+    <div class="max-w-2xl mx-auto px-4 py-8 sm:py-12">
+        <!-- Brand / Logo -->
+        <div class="text-center mb-10">
+            <a class="brand text-3xl" href="../index.html">Peer<span class="text-orange-600">Eval</span></a>
+        </div>
+
+        <!-- ID Card (Step 0a: name/ID) -->
+        <div id="identifyCard" class="bg-white rounded-3xl border border-slate-200 p-5 sm:p-8 shadow-xl">
+            <span class="eyebrow text-orange-600">Student Access</span>
+            <h1 id="evalTitleDisplay" class="text-3xl font-bold text-slate-900 mb-2">Loading...</h1>
+            <p class="text-slate-500 mb-8">Please identify yourself to begin the evaluation.</p>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Student ID or Full Name</label>
+                    <input type="text" id="identifier" placeholder="e.g. 10984191" 
+                           class="w-full p-4 rounded-2xl bg-slate-50 border-2 border-slate-100 focus:border-orange-600 outline-none transition-all text-lg font-medium">
+                </div>
+                <button id="findBtn" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold text-lg hover:bg-slate-800 transition-all flex items-center justify-center gap-2">
+                    Continue <i data-lucide="arrow-right" class="w-5 h-5"></i>
+                </button>
+                <div id="identifyError" class="error-box hidden"></div>
+            </div>
+        </div>
+
+        <!-- PIN Card (Step 0b: create or enter PIN, shown after identify) -->
+        <div id="pinCard" class="hidden bg-white rounded-3xl border border-slate-200 p-5 sm:p-8 shadow-xl">
+            <button id="pinBackBtn" class="text-xs font-bold text-slate-400 hover:text-slate-600 mb-4 flex items-center gap-1">
+                <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Not you?
+            </button>
+
+            <!-- Shown when this name/ID has no PIN yet -->
+            <div id="pinCreateBlock" class="hidden">
+                <h1 class="text-2xl font-bold text-slate-900 mb-1">Hi <span id="createGreetName"></span> — create a PIN</h1>
+                <p class="text-slate-500 mb-6 text-sm">First time here. Set a 4-digit PIN so only you can access your evaluation next time.</p>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">New PIN</label>
+                        <input type="password" id="newPin" inputmode="numeric" maxlength="4" placeholder="4 digits"
+                               class="w-full p-4 rounded-2xl bg-slate-50 border-2 border-slate-100 focus:border-orange-600 outline-none transition-all text-lg font-medium tracking-widest">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Confirm PIN</label>
+                        <input type="password" id="confirmPin" inputmode="numeric" maxlength="4" placeholder="4 digits"
+                               class="w-full p-4 rounded-2xl bg-slate-50 border-2 border-slate-100 focus:border-orange-600 outline-none transition-all text-lg font-medium tracking-widest">
+                    </div>
+                    <p class="text-xs text-slate-400">Remember this — if you forget it, only your lecturer can reset it.</p>
+                    <button id="claimPinBtn" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold text-lg hover:bg-slate-800 transition-all flex items-center justify-center gap-2">
+                        Set PIN & Continue <i data-lucide="arrow-right" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Shown when this name/ID already has a PIN -->
+            <div id="pinEnterBlock" class="hidden">
+                <h1 class="text-2xl font-bold text-slate-900 mb-1">Welcome back, <span id="loginGreetName"></span></h1>
+                <p class="text-slate-500 mb-6 text-sm">Enter your PIN to continue.</p>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">PIN</label>
+                        <input type="password" id="loginPin" inputmode="numeric" maxlength="4" placeholder="4 digits"
+                               class="w-full p-4 rounded-2xl bg-slate-50 border-2 border-slate-100 focus:border-orange-600 outline-none transition-all text-lg font-medium tracking-widest">
+                    </div>
+                    <button id="loginPinBtn" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold text-lg hover:bg-slate-800 transition-all flex items-center justify-center gap-2">
+                        Continue <i data-lucide="arrow-right" class="w-5 h-5"></i>
+                    </button>
+                    <p class="text-xs text-slate-400 text-center">Forgot your PIN? Ask your lecturer to reset it.</p>
+                </div>
+            </div>
+
+            <div id="pinError" class="error-box hidden mt-4"></div>
+        </div>
+
+        <!-- The Evaluation Wizard (Step 1+) -->
+        <div id="formCard" class="hidden">
+            <!-- Progress Header -->
+            <div class="flex items-center justify-between mb-6 px-2">
+                <div id="stepIndicators" class="flex gap-2">
+                    <!-- Dynamic -->
+                </div>
+                <span id="progressText" class="text-xs font-bold text-slate-400 uppercase tracking-widest">Peer 1 of 4</span>
+            </div>
+
+            <div class="bg-white rounded-3xl border border-slate-200 p-5 sm:p-8 shadow-xl relative overflow-hidden">
+                <div id="wizardGreeting" class="mb-8">
+                    <h2 class="text-2xl font-bold text-slate-900" id="currentPeerName">Rating Jane Doe</h2>
+                    <p class="text-slate-500">Based on your experience working together this term.</p>
+                </div>
+
+                <!-- Criteria Container -->
+                <div id="criteriaContainer" class="space-y-8">
+                    <!-- Dynamic Criteria Rows -->
+                </div>
+
+                <!-- Navigation -->
+                <div class="flex gap-4 mt-12 pt-8 border-t border-slate-100">
+                    <button id="prevBtn" class="flex-1 py-4 px-6 rounded-2xl border-2 border-slate-100 font-bold text-slate-400 hover:bg-slate-50 transition-all hidden">
+                        Back
+                    </button>
+                    <button id="nextBtn" class="flex-[2] py-4 px-6 rounded-2xl bg-orange-600 text-white font-bold text-lg hover:bg-orange-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                        Next Peer
+                    </button>
+                    <button id="submitBtn" class="flex-[2] py-4 px-6 rounded-2xl bg-green-600 text-white font-bold text-lg hover:bg-green-700 transition-all hidden">
+                        Finish & Submit
+                    </button>
+                </div>
+                <div id="submitError" class="error-box mt-4 hidden"></div>
+            </div>
+        </div>
+
+        <!-- Success Message -->
+        <div id="doneCard" class="hidden text-center animate-bounce-in">
+            <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                <i data-lucide="check-circle-2" class="w-12 h-12"></i>
+            </div>
+            <h2 class="text-3xl font-bold text-slate-900 mb-2">Submission Received!</h2>
+            <p class="text-slate-500">Thank you for your feedback. You may now close this window.</p>
+        </div>
     </div>
 
-    <div class="card" id="formCard" style="display:none">
-      <h3 id="greeting"></h3>
-      <p class="hint">Rate every other member of your group on each criterion below.</p>
-      <div style="overflow-x:auto">
-        <table class="rating-table" id="ratingTable"></table>
-      </div>
-      <div class="row" style="margin-top:20px">
-        <button class="btn btn--clay" id="submitBtn">Submit evaluation</button>
-      </div>
-      <div class="error-box" id="submitError" style="display:none"></div>
-    </div>
-
-    <div class="card" id="doneCard" style="display:none">
-      <h3>Thank you</h3>
-      <p class="hint">Your evaluation has been submitted.</p>
-    </div>
-  </div>
-
-  <script src="../js/api.js"></script>
-  <script>
-    const courseId = qs("course");
-    const evalId = qs("evaluation");
-    if (!courseId || !evalId) {
-      document.body.innerHTML = `<div class="wrap"><p class="hint">Missing course/evaluation in the link. Ask your lecturer to resend it.</p></div>`;
-    }
-
-    const identifyError = document.getElementById("identifyError");
-    const submitError = document.getElementById("submitError");
-    let evaluationData = null;
-    let studentData = null;
-
-    async function loadEvaluationInfo() {
-      evaluationData = await api(`/courses/${courseId}/evaluations/${evalId}`);
-      document.getElementById("evalTitle").textContent = evaluationData.title;
-      if (evaluationData.status === "closed") {
-        document.getElementById("identifyCard").innerHTML = `<p class="hint">This evaluation is closed and no longer accepting submissions.</p>`;
-      }
-    }
-
-    document.getElementById("findBtn").addEventListener("click", async () => {
-      hideError(identifyError);
-      const identifier = document.getElementById("identifier").value.trim();
-      if (!identifier) { showError(identifyError, new Error("Enter your ID or name.")); return; }
-      try {
-        const result = await api(`/courses/${courseId}/evaluations/${evalId}/lookup`, {
-          method: "POST",
-          body: JSON.stringify({ identifier }),
-        });
-        studentData = result;
-        buildForm();
-      } catch (err) {
-        showError(identifyError, err);
-      }
-    });
-
-    function buildForm() {
-      document.getElementById("identifyCard").style.display = "none";
-      document.getElementById("formCard").style.display = "block";
-      document.getElementById("greeting").textContent = `Evaluating your group, ${studentData.student.name}`;
-
-      const table = document.getElementById("ratingTable");
-      const criteria = evaluationData.criteria;
-      const scale = evaluationData.scale;
-
-      let head = `<thead><tr><th>Group member</th>${criteria.map(c => `<th>${c.name}</th>`).join("")}</tr></thead>`;
-      let body = "<tbody>";
-      studentData.peers_to_evaluate.forEach(peer => {
-        body += `<tr><td>${peer.name}</td>`;
-        criteria.forEach(c => {
-          body += `<td><select data-ratee="${peer.id}" data-criterion="${c.id}">
-            <option value="">—</option>
-            ${scale.map(s => `<option value="${s.value}">${s.value} · ${s.label}</option>`).join("")}
-          </select></td>`;
-        });
-        body += `</tr>`;
-      });
-      body += "</tbody>";
-      table.innerHTML = head + body;
-    }
-
-    document.getElementById("submitBtn").addEventListener("click", async () => {
-      hideError(submitError);
-      const selects = [...document.querySelectorAll("#ratingTable select")];
-      const unset = selects.filter(s => s.value === "");
-      if (unset.length > 0) {
-        showError(submitError, new Error(`Please rate every member on every criterion (${unset.length} left).`));
-        return;
-      }
-      const scores = selects.map(s => ({
-        ratee_student_id: parseInt(s.dataset.ratee, 10),
-        criterion_id: parseInt(s.dataset.criterion, 10),
-        score: parseInt(s.value, 10),
-      }));
-
-      try {
-        await api(`/courses/${courseId}/evaluations/${evalId}/submit`, {
-          method: "POST",
-          body: JSON.stringify({ evaluator_student_id: studentData.student.id, scores }),
-        });
-        document.getElementById("formCard").style.display = "none";
-        document.getElementById("doneCard").style.display = "block";
-      } catch (err) {
-        showError(submitError, err);
-      }
-    });
-
-    loadEvaluationInfo();
-  </script>
+    <script src="../js/api.js?v=20260817"></script>
+    <script src="evaluate.js?v=20260817"></script>
+    <script>lucide.createIcons();</script>
 </body>
 </html>
