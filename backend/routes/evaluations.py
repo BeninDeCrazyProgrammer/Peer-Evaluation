@@ -180,13 +180,26 @@ def close_evaluation(course_id, evaluation_id):
     return jsonify({"message": "Evaluation closed"})
 
 
+@evaluations_bp.route("/<int:evaluation_id>", methods=["DELETE"])
+@login_required
+def delete_evaluation(course_id, evaluation_id):
+    """Permanently removes an evaluation with its criteria, scale and all submissions."""
+    if not _assert_owns_course(course_id):
+        return jsonify({"error": "Course not found"}), 404
+    evaluation = Evaluation.first(id=evaluation_id, course_id=course_id)
+    if not evaluation:
+        return jsonify({"error": "Evaluation not found"}), 404
+    evaluation.delete_cascade()
+    return jsonify({"message": "Evaluation deleted"})
+
+
 @evaluations_bp.route("/<int:evaluation_id>/link", methods=["GET"])
 @login_required
 def get_link(course_id, evaluation_id):
     if not _assert_owns_course(course_id):
         return jsonify({"error": "Course not found"}), 404
 
-    frontend_url = os.environ.get("FRONTEND_URL", "").rstrip("/")
+    frontend_url = os.environ.get("FRONTEND_URL", "")
     link = f"{frontend_url}/student/evaluate.html?course={course_id}&evaluation={evaluation_id}"
 
     img = qrcode.make(link)

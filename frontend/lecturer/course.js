@@ -156,10 +156,11 @@ async function loadEvaluations() {
                         <p class="text-xs text-slate-400">Created ${new Date(ev.created_at).toLocaleDateString()}${deadlineText ? ` · ${deadlineText}` : ""}</p>
                     </div>
                 </div>
-                <div class="flex gap-2 shrink-0" onclick="event.stopPropagation()">
+                <div class="flex flex-wrap gap-2 shrink-0" onclick="event.stopPropagation()">
                     <button onclick="openModal(${ev.id}, '${ev.title.replace(/'/g, "\\'")}')" class="btn btn--ghost btn--sm"><i data-lucide="share-2" class="w-4 h-4"></i> Share</button>
                     <a href="results.html?course=${courseId}&evaluation=${ev.id}" class="btn btn--ghost btn--sm"><i data-lucide="pie-chart" class="w-4 h-4"></i> Results</a>
                     <button onclick="startEditing(${ev.id})" class="btn btn--ghost btn--sm"><i data-lucide="settings" class="w-4 h-4"></i> Settings</button>
+                    <button onclick="deleteEvaluation(${ev.id}, '${ev.title.replace(/'/g, "\\'")}')" class="btn btn--ghost btn--sm" aria-label="Delete evaluation"><i data-lucide="trash-2" class="w-4 h-4"></i> Delete</button>
                 </div>
             </div>
             <div class="${expandedEvalIds.has(ev.id) ? '' : 'hidden'} border-t border-slate-100 p-5 bg-slate-50/50" data-eval-body="${ev.id}">
@@ -447,6 +448,18 @@ async function resetStudentPin(classId, studentId, name) {
         loadClassRoster(classId);
     } catch (err) {
         alert(err.message || "Couldn't reset PIN.");
+    }
+}
+
+async function deleteEvaluation(evalId, title) {
+    if (!confirm(`Delete "${title}"? This permanently removes the evaluation, its criteria and rating scale, and every student submission and result. The class roster is kept. This can't be undone.`)) return;
+    try {
+        await api(`/courses/${courseId}/evaluations/${evalId}`, { method: "DELETE" });
+        expandedEvalIds.delete(evalId);
+        delete evalDetailsCache[evalId];
+        await loadEvaluations();
+    } catch (err) {
+        alert(err.message || "Couldn't delete evaluation.");
     }
 }
 

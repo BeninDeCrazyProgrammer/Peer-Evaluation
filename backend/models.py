@@ -623,6 +623,28 @@ class Evaluation(Model):
     table = "evaluations"
     columns = ("id", "course_id", "class_id", "title", "status", "deadline", "created_at")
 
+    def delete_cascade(self):
+        """
+        Deletes this evaluation and everything hanging off it: submission
+        scores, submissions, scale and criteria. No ON DELETE CASCADE exists
+        on these foreign keys, so this goes bottom-up as one atomic batch.
+        Roster (groups/students) is untouched. Irreversible — the route
+        decides whether the caller is allowed to do this.
+        """
+        eid = self.id
+        batch_execute([
+            (
+                "DELETE FROM submission_scores WHERE submission_id IN ("
+                "  SELECT id FROM submissions WHERE evaluation_id = ?"
+                ")",
+                [eid],
+            ),
+            ("DELETE FROM submissions WHERE evaluation_id = ?", [eid]),
+            ("DELETE FROM evaluation_scale WHERE evaluation_id = ?", [eid]),
+            ("DELETE FROM evaluation_criteria WHERE evaluation_id = ?", [eid]),
+            ("DELETE FROM evaluations WHERE id = ?", [eid]),
+        ])
+
     def check_and_close(self):
         """
         If a deadline is set and has passed while status is still 'open',
