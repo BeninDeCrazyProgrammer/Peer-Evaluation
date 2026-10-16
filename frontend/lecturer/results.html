@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Results — PeerEval</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <div class="topbar">
+    <a class="brand" href="../index.html">Peer<span>Eval</span></a>
+    <a class="btn btn--ghost btn--sm" id="backLink" href="#">Back to course</a>
+  </div>
+  <div class="wrap">
+    <span class="eyebrow">Results</span>
+    <h1 id="evalTitle">Loading…</h1>
+
+    <div class="card">
+      <h3>Completion</h3>
+      <div id="completionList" class="hint">Loading…</div>
+    </div>
+
+    <div class="card">
+      <div class="row row--between">
+        <h3>Averages per student</h3>
+        <a class="btn btn--ghost btn--sm" id="exportBtn" href="#">Export CSV</a>
+      </div>
+      <div class="table-scroll">
+        <table id="aggTable">
+          <thead><tr id="aggHead"></tr></thead>
+          <tbody id="aggBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row row--between">
+        <h3>Individual evaluator scores</h3>
+        <button class="btn btn--ghost btn--sm" id="toggleIndividual">Show</button>
+      </div>
+      <div id="individualWrap" style="display:none; margin-top:12px">
+        <div class="table-scroll">
+          <table id="indTable">
+            <thead><tr><th>Evaluator</th><th>Rated</th><th>Criterion</th><th>Score</th></tr></thead>
+            <tbody id="indBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../js/api.js"></script>
+  <script>
+    const courseId = qs("course");
+    const evalId = qs("evaluation");
+    if (!courseId || !evalId) window.location.href = "dashboard.html";
+    document.getElementById("backLink").href = `course.html?course=${courseId}`;
+
+    document.getElementById("exportBtn").href = `${API_BASE}/courses/${courseId}/evaluations/${evalId}/results/export.csv`;
+
+    async function loadCompletion() {
+      const groups = await api(`/courses/${courseId}/evaluations/${evalId}/completion`);
+      const el = document.getElementById("completionList");
+      el.innerHTML = groups.map(g => {
+        const submitted = g.students.filter(s => s.has_submitted).length;
+        const rows = g.students.map(s => `
+          <div class="list-item">
+            <span>${s.name} <span class="hint">(${s.student_id})</span></span>
+            <span class="pill ${s.has_submitted ? 'pill--good' : 'pill--warn'}">
+              ${s.has_submitted ? "Submitted" : "Pending"}
+            </span>
+          </div>
+        `).join("");
+        return `<div style="margin-bottom:16px">
+          <strong>${g.group_label}</strong>
+          <span class="hint">(${submitted}/${g.students.length} submitted)</span>
+          ${rows}
+        </div>`;
+      }).join("");
+    }
+
+    async function loadResults() {
+      const data = await api(`/courses/${courseId}/evaluations/${evalId}/results`);
+
+      const aggHead = document.getElementById("aggHead");
+      aggHead.innerHTML = `<th>Student</th>` +
+        data.criteria.map(c => `<th>${c.name}</th>`).join("") +
+        `<th>Overall</th>`;
+
+      const aggBody = document.getElementById("aggBody");
+      if (data.aggregates.length === 0) {
+        aggBody.innerHTML = `<tr><td colspan="${data.criteria.length + 2}" class="hint">No submissions yet.</td></tr>`;
+      } else {
+        aggBody.innerHTML = data.aggregates.map(s => {
+          const byName = Object.fromEntries(s.by_criterion.map(c => [c.criterion, c.average]));
+          return `<tr>
+            <td>${s.name}</td>
+            ${data.criteria.map(c => `<td>${byName[c.name] ?? "—"}</td>`).join("")}
+            <td><strong>${s.overall_average ?? "—"}</strong></td>
+          </tr>`;
+        }).join("");
+      }
+
+      const indBody = document.getElementById("indBody");
+      indBody.innerHTML = data.individual_scores.map(r => `
+        <tr>
+          <td>${r.evaluator_name}</td>
+          <td>${r.ratee_name}</td>
+          <td>${r.criterion}</td>
+          <td>${r.score}</td>
+        </tr>
+      `).join("");
+    }
+
+    document.getElementById("toggleIndividual").addEventListener("click", (e) => {
+      const wrap = document.getElementById("individualWrap");
+      const showing = wrap.style.display !== "none";
+      wrap.style.display = showing ? "none" : "block";
+      e.target.textContent = showing ? "Show" : "Hide";
+    });
+
+    api("/auth/me").then(async me => {
+      if (!me.authenticated) { window.location.href = "login.html"; return; }
+      const ev = await api(`/courses/${courseId}/evaluations/${evalId}`);
+      document.getElementById("evalTitle").textContent = ev.title;
+      await loadCompletion();
+      await loadResults();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Course — PeerEval</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <div class="topbar">
+    <a class="brand" href="../index.html">Peer<span>Eval</span></a>
+    <a class="btn btn--ghost btn--sm" href="dashboard.html">All courses</a>
+  </div>
+  <div class="wrap">
+    <span class="eyebrow" id="courseEyebrow">Course</span>
+    <h1 id="courseName">Loading…</h1>
+
+    <div class="card">
+      <h3>Groups</h3>
+      <p class="hint">Upload the groups spreadsheet (Group Number / Name / ID columns).
+        Re-uploading replaces the current group list for this course.</p>
+      <input type="file" id="groupsFile" accept=".xlsx,.xls">
+      <div class="row" style="margin-top:14px">
+        <button class="btn btn--clay" id="uploadBtn">Upload groups</button>
+      </div>
+      <div class="error-box" id="uploadError" style="display:none"></div>
+      <div id="groupsList" style="margin-top:18px"></div>
+    </div>
+
+    <div class="card">
+      <h3 id="evalFormTitle">New evaluation</h3>
+      <p class="hint" id="editingHint" style="display:none">
+        Editing this evaluation. Criteria/scale changes only save if nobody has submitted yet.
+        <button class="btn btn--ghost btn--sm" id="cancelEditBtn" type="button">Cancel edit</button>
+      </p>
+
+      <label>Title</label>
+      <input type="text" id="evalTitle" placeholder="Peer Evaluation 1">
+
+      <label>Criteria</label>
+      <div id="criteriaRows"></div>
+      <button class="btn btn--ghost btn--sm" id="addCriterion" style="margin-top:8px">+ Add criterion</button>
+
+      <label style="margin-top:24px">Rating scale</label>
+      <p class="hint" style="margin:0 0 8px">Define your own points, e.g. 0 = Unacceptable up to 4 = Excellent.</p>
+      <div id="scaleRows"></div>
+      <button class="btn btn--ghost btn--sm" id="addScalePoint" style="margin-top:8px">+ Add scale point</button>
+
+      <div class="row" style="margin-top:20px">
+        <button class="btn" id="createEvalBtn">Create evaluation</button>
+      </div>
+      <div class="error-box" id="evalError" style="display:none"></div>
+    </div>
+
+    <div class="card">
+      <h3>Evaluations</h3>
+      <div id="evalsList" class="hint">Loading…</div>
+    </div>
+  </div>
+
+  <script src="../js/api.js"></script>
+  <script>
+    const courseId = qs("course");
+    if (!courseId) window.location.href = "dashboard.html";
+
+    const uploadError = document.getElementById("uploadError");
+    const evalError = document.getElementById("evalError");
+
+    function criterionRow(value = "") {
+      const div = document.createElement("div");
+      div.className = "row";
+      div.style.marginTop = "8px";
+      div.innerHTML = `<input type="text" class="criterion-input" placeholder="e.g. Participation" value="${value}">
+                        <button class="btn btn--ghost btn--sm remove-row">✕</button>`;
+      div.querySelector(".remove-row").addEventListener("click", () => div.remove());
+      return div;
+    }
+
+    function scaleRow(value = "", label = "") {
+      const div = document.createElement("div");
+      div.className = "row";
+      div.style.marginTop = "8px";
+      div.innerHTML = `<input type="number" class="scale-value" placeholder="0" style="max-width:70px" value="${value}">
+                        <input type="text" class="scale-label" placeholder="Unacceptable" value="${label}">
+                        <button class="btn btn--ghost btn--sm remove-row">✕</button>`;
+      div.querySelector(".remove-row").addEventListener("click", () => div.remove());
+      return div;
+    }
+
+    const criteriaRows = document.getElementById("criteriaRows");
+    const scaleRows = document.getElementById("scaleRows");
+
+    // starting content is filled by resetForm() below (also reused when cancelling an edit)
+
+    document.getElementById("addCriterion").addEventListener("click", () => criteriaRows.appendChild(criterionRow()));
+    document.getElementById("addScalePoint").addEventListener("click", () => scaleRows.appendChild(scaleRow()));
+
+    let editingEvalId = null;
+
+    function resetForm() {
+      editingEvalId = null;
+      document.getElementById("evalFormTitle").textContent = "New evaluation";
+      document.getElementById("editingHint").style.display = "none";
+      document.getElementById("createEvalBtn").textContent = "Create evaluation";
+      document.getElementById("evalTitle").value = "";
+      criteriaRows.innerHTML = "";
+      scaleRows.innerHTML = "";
+      ["Participation", "Punctuality", "Quality of Work", "Cooperation"].forEach(c =>
+        criteriaRows.appendChild(criterionRow(c))
+      );
+      [[0, "Unacceptable"], [1, "Poor"], [2, "Fair"], [3, "Good"], [4, "Excellent"]].forEach(([v, l]) =>
+        scaleRows.appendChild(scaleRow(v, l))
+      );
+    }
+
+    async function startEditing(evalId) {
+      hideError(evalError);
+      const ev = await api(`/courses/${courseId}/evaluations/${evalId}`);
+      editingEvalId = evalId;
+      document.getElementById("evalFormTitle").textContent = `Editing "${ev.title}"`;
+      document.getElementById("editingHint").style.display = "block";
+      document.getElementById("createEvalBtn").textContent = "Save changes";
+      document.getElementById("evalTitle").value = ev.title;
+      criteriaRows.innerHTML = "";
+      scaleRows.innerHTML = "";
+      ev.criteria.forEach(c => criteriaRows.appendChild(criterionRow(c.name)));
+      ev.scale.forEach(s => scaleRows.appendChild(scaleRow(s.value, s.label)));
+      document.getElementById("evalTitle").scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+
+    document.getElementById("cancelEditBtn").addEventListener("click", resetForm);
+
+    async function loadCourse() {
+      const course = await api(`/courses/${courseId}`);
+      document.getElementById("courseName").textContent = course.name;
+      document.getElementById("courseEyebrow").textContent = `Course #${course.id}`;
+    }
+
+    async function loadGroups() {
+      const groups = await api(`/courses/${courseId}/groups`);
+      const el = document.getElementById("groupsList");
+      if (groups.length === 0) {
+        el.innerHTML = `<p class="hint">No groups uploaded yet.</p>`;
+        return;
+      }
+      el.innerHTML = groups.map(g => `
+        <div style="margin-bottom:14px">
+          <strong>${g.group_label}</strong>
+          <span class="hint">(${g.students.length} students)</span>
+          <div class="hint">${g.students.map(s => s.name).join(", ")}</div>
+        </div>
+      `).join("");
+    }
+
+    document.getElementById("uploadBtn").addEventListener("click", async () => {
+      hideError(uploadError);
+      const fileInput = document.getElementById("groupsFile");
+      if (!fileInput.files.length) { showError(uploadError, new Error("Choose a file first.")); return; }
+      const form = new FormData();
+      form.append("file", fileInput.files[0]);
+      try {
+        const result = await api(`/courses/${courseId}/groups/upload`, { method: "POST", body: form });
+        if (result.warnings && result.warnings.length) {
+          showError(uploadError, new Error(result.warnings.join(" | ")));
+        }
+        await loadGroups();
+      } catch (err) {
+        showError(uploadError, err);
+      }
+    });
+
+    document.getElementById("createEvalBtn").addEventListener("click", async () => {
+      hideError(evalError);
+      const title = document.getElementById("evalTitle").value.trim();
+      const criteria = [...document.querySelectorAll(".criterion-input")]
+        .map(i => i.value.trim()).filter(Boolean);
+      const scale = [...scaleRows.children].map(row => ({
+        value: parseInt(row.querySelector(".scale-value").value, 10),
+        label: row.querySelector(".scale-label").value.trim(),
+      })).filter(s => s.label && !Number.isNaN(s.value));
+
+      try {
+        if (!title) throw new Error("Title is required.");
+        if (editingEvalId) {
+          await api(`/courses/${courseId}/evaluations/${editingEvalId}`, {
+            method: "PATCH",
+            body: JSON.stringify({ title, criteria, scale }),
+          });
+        } else {
+          await api(`/courses/${courseId}/evaluations`, {
+            method: "POST",
+            body: JSON.stringify({ title, criteria, scale }),
+          });
+        }
+        resetForm();
+        await loadEvaluations();
+      } catch (err) {
+        showError(evalError, err);
+      }
+    });
+
+    async function loadEvaluations() {
+      const evals = await api(`/courses/${courseId}/evaluations`);
+      const el = document.getElementById("evalsList");
+      if (evals.length === 0) {
+        el.innerHTML = `<p class="hint">No evaluations yet — create one above.</p>`;
+        return;
+      }
+      el.innerHTML = "";
+      evals.forEach(ev => {
+        const div = document.createElement("div");
+        div.className = "list-item";
+        div.innerHTML = `
+          <div>
+            <strong>${ev.title}</strong>
+            <span class="pill ${ev.status === 'open' ? 'pill--good' : 'pill--warn'}">${ev.status}</span>
+          </div>
+          <div class="row">
+            <button class="btn btn--ghost btn--sm edit-btn">Edit</button>
+            <button class="btn btn--ghost btn--sm link-btn">Link / QR</button>
+            <a class="btn btn--ghost btn--sm" href="results.html?course=${courseId}&evaluation=${ev.id}">Results</a>
+          </div>
+        `;
+        div.querySelector(".edit-btn").addEventListener("click", () => startEditing(ev.id));
+        div.querySelector(".link-btn").addEventListener("click", () => showLink(ev.id, div));
+        el.appendChild(div);
+      });
+    }
+
+    async function showLink(evalId, container) {
+      let box = container.querySelector(".qr-box");
+      if (box) { box.remove(); return; }
+      const data = await api(`/courses/${courseId}/evaluations/${evalId}/link`);
+      box = document.createElement("div");
+      box.className = "qr-box";
+      box.style.marginTop = "10px";
+      box.innerHTML = `
+        <p class="hint" style="word-break:break-all">${data.link}</p>
+        <img src="data:image/png;base64,${data.qr_code_png_base64}" width="140" height="140">
+      `;
+      container.appendChild(box);
+    }
+
+    api("/auth/me").then(me => {
+      if (!me.authenticated) { window.location.href = "login.html"; return; }
+      resetForm();
+      loadCourse();
+      loadGroups();
+      loadEvaluations();
+    });
+  </script>
+</body>
+</html>
