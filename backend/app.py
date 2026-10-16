@@ -42,7 +42,10 @@ def create_app():
     # Global CORS configuration
     origins = ["https://benindecrazyprogrammer.github.io"]
     if os.environ.get("FRONTEND_URL"):
-        origins.append(os.environ.get("FRONTEND_URL").rstrip("/"))
+        from urllib.parse import urlparse
+        _u = urlparse(os.environ["FRONTEND_URL"])
+        if _u.scheme and _u.netloc:
+            origins.append(f"{_u.scheme}://{_u.netloc}")
 
     CORS(app, supports_credentials=True, origins=origins)
 

@@ -186,7 +186,7 @@ def get_link(course_id, evaluation_id):
     if not _assert_owns_course(course_id):
         return jsonify({"error": "Course not found"}), 404
 
-    frontend_url = os.environ.get("FRONTEND_URL", "")
+    frontend_url = os.environ.get("FRONTEND_URL", "").rstrip("/")
     link = f"{frontend_url}/student/evaluate.html?course={course_id}&evaluation={evaluation_id}"
 
     img = qrcode.make(link)
