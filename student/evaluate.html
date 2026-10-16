@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Evaluate — PeerEval</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <div class="topbar">
+    <a class="brand" href="../index.html">Peer<span>Eval</span></a>
+  </div>
+  <div class="wrap">
+    <span class="eyebrow" id="courseEyebrow">Peer Evaluation</span>
+    <h1 id="evalTitle">Loading…</h1>
+
+    <div class="card" id="identifyCard">
+      <h3>Who are you?</h3>
+      <p class="hint">Enter your student ID or full name exactly as it appears on the group list.</p>
+      <label>ID or name</label>
+      <input type="text" id="identifier" placeholder="e.g. 10984191 or Jane Doe">
+      <div class="row" style="margin-top:16px">
+        <button class="btn" id="findBtn">Continue</button>
+      </div>
+      <div class="error-box" id="identifyError" style="display:none"></div>
+    </div>
+
+    <div class="card" id="formCard" style="display:none">
+      <h3 id="greeting"></h3>
+      <p class="hint">Rate every other member of your group on each criterion below.</p>
+      <div style="overflow-x:auto">
+        <table class="rating-table" id="ratingTable"></table>
+      </div>
+      <div class="row" style="margin-top:20px">
+        <button class="btn btn--clay" id="submitBtn">Submit evaluation</button>
+      </div>
+      <div class="error-box" id="submitError" style="display:none"></div>
+    </div>
+
+    <div class="card" id="doneCard" style="display:none">
+      <h3>Thank you</h3>
+      <p class="hint">Your evaluation has been submitted.</p>
+    </div>
+  </div>
+
+  <script src="../js/api.js"></script>
+  <script>
+    const courseId = qs("course");
+    const evalId = qs("evaluation");
+    if (!courseId || !evalId) {
+      document.body.innerHTML = `<div class="wrap"><p class="hint">Missing course/evaluation in the link. Ask your lecturer to resend it.</p></div>`;
+    }
+
+    const identifyError = document.getElementById("identifyError");
+    const submitError = document.getElementById("submitError");
+    let evaluationData = null;
+    let studentData = null;
+
+    async function loadEvaluationInfo() {
+      evaluationData = await api(`/courses/${courseId}/evaluations/${evalId}`);
+      document.getElementById("evalTitle").textContent = evaluationData.title;
+      if (evaluationData.status === "closed") {
+        document.getElementById("identifyCard").innerHTML = `<p class="hint">This evaluation is closed and no longer accepting submissions.</p>`;
+      }
+    }
+
+    document.getElementById("findBtn").addEventListener("click", async () => {
+      hideError(identifyError);
+      const identifier = document.getElementById("identifier").value.trim();
+      if (!identifier) { showError(identifyError, new Error("Enter your ID or name.")); return; }
+      try {
+        const result = await api(`/courses/${courseId}/evaluations/${evalId}/lookup`, {
+          method: "POST",
+          body: JSON.stringify({ identifier }),
+        });
+        studentData = result;
+        buildForm();
+      } catch (err) {
+        showError(identifyError, err);
+      }
+    });
+
+    function buildForm() {
+      document.getElementById("identifyCard").style.display = "none";
+      document.getElementById("formCard").style.display = "block";
+      document.getElementById("greeting").textContent = `Evaluating your group, ${studentData.student.name}`;
+
+      const table = document.getElementById("ratingTable");
+      const criteria = evaluationData.criteria;
+      const scale = evaluationData.scale;
+
+      let head = `<thead><tr><th>Group member</th>${criteria.map(c => `<th>${c.name}</th>`).join("")}</tr></thead>`;
+      let body = "<tbody>";
+      studentData.peers_to_evaluate.forEach(peer => {
+        body += `<tr><td>${peer.name}</td>`;
+        criteria.forEach(c => {
+          body += `<td><select data-ratee="${peer.id}" data-criterion="${c.id}">
+            <option value="">—</option>
+            ${scale.map(s => `<option value="${s.value}">${s.value} · ${s.label}</option>`).join("")}
+          </select></td>`;
+        });
+        body += `</tr>`;
+      });
+      body += "</tbody>";
+      table.innerHTML = head + body;
+    }
+
+    document.getElementById("submitBtn").addEventListener("click", async () => {
+      hideError(submitError);
+      const selects = [...document.querySelectorAll("#ratingTable select")];
+      const unset = selects.filter(s => s.value === "");
+      if (unset.length > 0) {
+        showError(submitError, new Error(`Please rate every member on every criterion (${unset.length} left).`));
+        return;
+      }
+      const scores = selects.map(s => ({
+        ratee_student_id: parseInt(s.dataset.ratee, 10),
+        criterion_id: parseInt(s.dataset.criterion, 10),
+        score: parseInt(s.value, 10),
+      }));
+
+      try {
+        await api(`/courses/${courseId}/evaluations/${evalId}/submit`, {
+          method: "POST",
+          body: JSON.stringify({ evaluator_student_id: studentData.student.id, scores }),
+        });
+        document.getElementById("formCard").style.display = "none";
+        document.getElementById("doneCard").style.display = "block";
+      } catch (err) {
+        showError(submitError, err);
+      }
+    });
+
+    loadEvaluationInfo();
+  </script>
+</body>
+</html>
