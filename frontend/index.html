@@ -5,91 +5,92 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PeerEval — Group peer evaluation, online</title>
 <meta name="description" content="A fast, structured way for lecturers to ask a project group who actually did the work — custom rubrics, no accounts for students, results totalled automatically.">
-<link rel="stylesheet" href="css/style.css?v=20260818">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css?v=20261016">
 </head>
 <body>
-  <div class="topbar">
-    <a class="brand" href="index.html">Peer<span>Eval</span></a>
-  </div>
-  <div class="wrap">
-
-    <div class="landing-hero">
-      <span class="eyebrow">Group peer evaluation, online</span>
-      <h1>Evaluations without the paper</h1>
-      <p>A single group grade can't tell you who carried the project and who coasted on it.
-        PeerEval gives a course a fast, structured way to ask the people who'd actually
-        know — the group itself — and turns their answers into numbers a lecturer can act on.</p>
+  <header class="lp-nav">
+    <div class="lp-nav__inner">
+      <a class="brand" href="index.html">Peer<span>Eval</span></a>
+      <a class="btn btn--ghost btn--sm" href="lecturer/login.html">Lecturer login</a>
     </div>
+  </header>
 
-    <div class="section">
-      <h2>Why bother asking the group?</h2>
-      <p>Every lecturer who assigns group work runs into the same problem eventually: the
-        workload splits unevenly, but the grade doesn't. The student who wrote the report
-        and the student who missed three meetings walk away with the same mark, and the
-        rest of the group notices. By the time it reaches a lecturer as a complaint, the
-        semester is usually over.</p>
-      <p>Students already know who did the work — they're the only ones in the room for
-        every missed deadline and rescued deliverable. Peer evaluation just gives that
-        knowledge somewhere to go, with a rubric instead of a rumor.</p>
-    </div>
-
-    <div class="section">
-      <h2>What makes it worth trusting</h2>
-      <p>A stack of anonymous complaints isn't evidence. A fixed set of criteria and a
-        shared rating scale — the same ones for the whole class — mean one student's "3"
-        means roughly what another's "3" means. Every member rates every other member, not
-        just themselves, so a single grudge or a single fan doesn't skew the picture. What
-        comes out the other end is a total per student, a full matrix of who rated whom,
-        and a clear record of who never submitted anything at all — enough to actually
-        weigh a grade against, or enough to know one shouldn't be adjusted at all.</p>
-    </div>
-
-    <div class="section">
-      <h2>Built around how a course actually runs</h2>
-      <div class="benefit-grid">
-        <div>
-          <h3>One course, several cohorts</h3>
-          <p>A course taught to more than one year group or section gets a separate class
-            for each — its own roster, its own evaluations, never mixed up with another's.</p>
+  <main class="lp">
+    <section class="lp-hero">
+      <div>
+        <h1>Find out who actually did the work</h1>
+        <p class="lp-hero__lead">A group grade can't tell a carrier from a passenger. PeerEval asks the
+          group itself, on a rubric you set, and totals the answers for you. No paper, no student accounts.</p>
+        <div class="lp-actions">
+          <a class="btn" href="lecturer/login.html">I'm a lecturer</a>
+          <a class="btn btn--ghost" href="#students">I'm a student</a>
         </div>
-        <div>
-          <h3>Your rubric, your scale</h3>
-          <p>Criteria and rating scale are set per evaluation, not fixed by the software.
-            Match whatever rubric the department already uses.</p>
-        </div>
-        <div>
-          <h3>Nothing for students to install</h3>
-          <p>A link or QR code, their name or ID, and a PIN they set themselves the first
-            time. No accounts, no app, no password for anyone else to reset.</p>
-        </div>
-      </div>
-    </div>
-
-    <div class="section cta-grid">
-      <div class="card card--cta">
-        <h3>I'm a lecturer</h3>
-        <p>Create a course, upload a group list, and set up an evaluation with your own
-          criteria and rating scale — results are totalled and averaged automatically.</p>
-        <ul>
-          <li>Per-class rosters for courses with more than one cohort</li>
-          <li>A results dashboard with totals, rankings, and a full rating matrix</li>
-          <li>Export to Excel, colors and all</li>
-        </ul>
-        <a class="btn" href="lecturer/login.html">Go to lecturer login</a>
+        <p class="lp-note">Students: use the link or QR code your lecturer shared.</p>
       </div>
 
-      <div class="card card--cta">
-        <h3>I'm a student</h3>
-        <p>You'll need the link or QR code your lecturer shared for this specific
-          evaluation — there's nothing to browse to here.</p>
-        <ul>
-          <li>Open the link, enter your name or student ID</li>
-          <li>Set a 4-digit PIN the first time — that's your whole account</li>
-          <li>Rate your groupmates and submit</li>
-        </ul>
+      <div class="lp-sample" aria-label="Example of a results table">
+        <div class="lp-sample__title"><strong>Group 4</strong><span>Sample results</span></div>
+        <table>
+          <thead><tr><th>Member</th><th>Effort</th><th>Reliability</th><th>Total</th></tr></thead>
+          <tbody>
+            <tr><td>Ama</td><td>3.7</td><td>3.9</td><td class="total">7.6</td></tr>
+            <tr><td>Kofi</td><td>3.2</td><td>3.4</td><td class="total">6.6</td></tr>
+            <tr><td>Esi</td><td>3.5</td><td>3.1</td><td class="total">6.6</td></tr>
+            <tr><td>Yaw</td><td>1.8</td><td>1.5</td><td class="total">3.3</td></tr>
+            <tr><td>Efua</td><td class="miss" colspan="3">Did not submit</td></tr>
+          </tbody>
+        </table>
+        <p class="lp-sample__foot">Averages of what groupmates gave each member. Made-up data.</p>
       </div>
-    </div>
+    </section>
 
-  </div>
+    <section class="lp-section">
+      <h2>How a round works</h2>
+      <ol class="lp-steps">
+        <li><h3>Set it up</h3><p>Create a course, upload the group list, and write your own criteria and rating scale.</p></li>
+        <li><h3>Share one link</h3><p>Send the link or QR code. Students pick their name, set a 4-digit PIN, and rate their groupmates.</p></li>
+        <li><h3>Read the results</h3><p>See totals, rankings, a full who-rated-whom matrix, and who never submitted. Export to Excel.</p></li>
+      </ol>
+    </section>
+
+    <section class="lp-section lp-why">
+      <h2>Why ask the group?</h2>
+      <p>The workload splits unevenly but the grade doesn't, and the group notices. Students already know
+        who did what. A shared rubric turns that knowledge into numbers one lecturer can compare
+        across a class, instead of a pile of complaints after the semester ends.</p>
+      <p>Every member rates every other member, so one grudge or one friend can't skew a result.
+        One submission per student, enforced by the database.</p>
+    </section>
+
+    <section class="lp-section" id="students">
+      <h2>Pick your role</h2>
+      <div class="lp-roles">
+        <div class="card card--cta">
+          <h3>I'm a lecturer</h3>
+          <p>Create a course, upload a group list and set up an evaluation with your own criteria.</p>
+          <ul>
+            <li>Separate classes for each cohort of a course</li>
+            <li>Results with totals, rankings and a full rating matrix</li>
+            <li>Excel export with colours kept</li>
+          </ul>
+          <a class="btn" href="lecturer/login.html">Go to lecturer login</a>
+        </div>
+        <div class="card card--cta">
+          <h3>I'm a student</h3>
+          <p>You need the link or QR code for your evaluation. There's nothing to browse to here.</p>
+          <ul>
+            <li>Open the link and choose your name or student ID</li>
+            <li>Set a 4-digit PIN the first time. That's your whole account</li>
+            <li>Rate your groupmates and submit</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <footer class="lp-foot">PeerEval, built for group work in engineering courses.</footer>
+  </main>
 </body>
 </html>
