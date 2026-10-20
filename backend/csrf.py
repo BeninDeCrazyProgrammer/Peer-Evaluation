@@ -85,6 +85,7 @@ def ensure_csrf_cookie(response, local_dev):
             httponly=False,  # frontend JS has to be able to read this one
             secure=not local_dev,
             samesite="Lax" if local_dev else "None",
+            partitioned=not local_dev,  # keeps the cookie alive when the browser restricts third-party cookies
             path="/",
         )
     return response

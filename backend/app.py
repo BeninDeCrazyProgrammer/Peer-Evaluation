@@ -69,6 +69,7 @@ def create_app():
     else:
         app.config["SESSION_COOKIE_SAMESITE"] = "None"
         app.config["SESSION_COOKIE_SECURE"] = True
+        app.config["SESSION_COOKIE_PARTITIONED"] = True
 
     init_auth(app)
     limiter.init_app(app)
