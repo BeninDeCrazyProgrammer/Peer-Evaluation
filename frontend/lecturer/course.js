@@ -157,10 +157,10 @@ async function loadEvaluations() {
                     </div>
                 </div>
                 <div class="flex flex-wrap gap-2 shrink-0" onclick="event.stopPropagation()">
-                    <button onclick="openModal(${ev.id}, '${ev.title.replace(/'/g, "\\'")}')" class="btn btn--ghost btn--sm"><i data-lucide="share-2" class="w-4 h-4"></i> Share</button>
-                    <a href="results.html?course=${courseId}&evaluation=${ev.id}" class="btn btn--ghost btn--sm"><i data-lucide="pie-chart" class="w-4 h-4"></i> Results</a>
-                    <button onclick="startEditing(${ev.id})" class="btn btn--ghost btn--sm"><i data-lucide="settings" class="w-4 h-4"></i> Settings</button>
-                    <button onclick="deleteEvaluation(${ev.id}, '${ev.title.replace(/'/g, "\\'")}')" class="btn btn--ghost btn--sm" aria-label="Delete evaluation"><i data-lucide="trash-2" class="w-4 h-4"></i> Delete</button>
+                    <button onclick="openModal(${ev.id}, '${ev.title.replace(/'/g, "\\'")}')" class="btn btn--ghost btn--sm btn--icon" data-tip="Share" aria-label="Share"><i data-lucide="share-2" class="w-4 h-4"></i></button>
+                    <a href="results.html?course=${courseId}&evaluation=${ev.id}" class="btn btn--ghost btn--sm btn--icon" data-tip="Results" aria-label="Results"><i data-lucide="pie-chart" class="w-4 h-4"></i></a>
+                    <button onclick="startEditing(${ev.id})" class="btn btn--ghost btn--sm btn--icon" data-tip="Settings" aria-label="Settings"><i data-lucide="settings" class="w-4 h-4"></i></button>
+                    <button onclick="deleteEvaluation(${ev.id}, '${ev.title.replace(/'/g, "\\'")}')" class="btn btn--ghost btn--sm btn--icon btn--danger" data-tip="Delete" aria-label="Delete evaluation"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                 </div>
             </div>
             <div class="${expandedEvalIds.has(ev.id) ? '' : 'hidden'} border-t border-slate-100 p-5 bg-slate-50/50" data-eval-body="${ev.id}">

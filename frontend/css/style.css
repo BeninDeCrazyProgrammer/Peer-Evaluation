@@ -582,3 +582,15 @@ footer.hint { text-align: center; margin-top: 40px; }
   .lp-sample th, .lp-sample td { padding: 8px 3px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* ---- Icon-only action buttons with hover tooltip ---- */
+.btn--icon { position: relative; padding: 8px 10px; cursor: pointer; }
+.btn--icon[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  padding: 4px 8px; border-radius: 6px; background: var(--ink); color: #fff;
+  font-size: 0.75rem; font-weight: 600; line-height: 1.2; white-space: nowrap;
+  opacity: 0; pointer-events: none; transition: opacity 0.12s; z-index: 30;
+}
+.btn--icon[data-tip]:hover::after, .btn--icon[data-tip]:focus-visible::after { opacity: 1; }
+.btn--danger:hover { color: #b3261e; border-color: #b3261e; background: #fdf1f0; }
