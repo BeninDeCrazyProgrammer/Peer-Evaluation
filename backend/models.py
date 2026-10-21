@@ -122,6 +122,13 @@ SCHEMA = [
     "CREATE INDEX IF NOT EXISTS idx_submissions_eval ON submissions(evaluation_id)",
     "CREATE INDEX IF NOT EXISTS idx_scores_submission ON submission_scores(submission_id)",
     "CREATE INDEX IF NOT EXISTS idx_scores_ratee ON submission_scores(ratee_student_id)",
+    """
+    CREATE TABLE IF NOT EXISTS rate_limits (
+        bucket       TEXT PRIMARY KEY,
+        window_start INTEGER NOT NULL,
+        count        INTEGER NOT NULL
+    )
+    """,
 ]
 
 
