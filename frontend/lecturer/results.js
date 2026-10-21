@@ -6,7 +6,29 @@ if (!courseId || !evalId) window.location.href = "dashboard.html";
 initSections();
 document.getElementById("backLink").href = `course.html?course=${courseId}`;
 document.getElementById("backLinkMobile").href = `course.html?course=${courseId}`;
-document.getElementById("exportBtn").href = `${API_BASE}/courses/${courseId}/evaluations/${evalId}/results/export.xlsx`;
+// Download via fetch, not a plain link: the session cookie is partitioned to
+// this site, so a top-level navigation straight to the API wouldn't carry it.
+document.getElementById("exportBtn").addEventListener("click", async (e) => {
+    e.preventDefault();
+    try {
+        const res = await fetch(`${API_BASE}/courses/${courseId}/evaluations/${evalId}/results/export.xlsx`, { credentials: "include" });
+        if (!res.ok) {
+            let msg = null;
+            try { msg = (await res.json()).error; } catch (_) { /* no JSON body */ }
+            throw new Error(msg || `Export failed (${res.status})`);
+        }
+        const url = URL.createObjectURL(await res.blob());
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `peer-evaluation-results-${evalId}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    } catch (err) {
+        alert(err.message || "Couldn't export results.");
+    }
+});
 
 let globalData = null; // Store results for drilling
 let globalCompletion = null; // Store roster/submission status for the matrix
