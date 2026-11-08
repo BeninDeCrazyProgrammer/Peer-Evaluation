@@ -12,6 +12,42 @@ const submitBtn = document.getElementById("submitBtn");
 const backToLoginBtn = document.getElementById("backToLoginBtn");
 const forgotPasswordLink = document.getElementById("forgotPasswordLink");
 
+// Invite link (?invite=TOKEN): a course owner invited this email as a TA. After
+// logging in or registering, the invite is accepted and they land on the course.
+const inviteToken = qs("invite");
+let inviteEmail = null;
+
+async function goAfterAuth() {
+  if (inviteToken) {
+    const res = await api("/invites/accept", { method: "POST", body: JSON.stringify({ token: inviteToken }) });
+    window.location.href = `course.html?course=${res.course_id}`;
+  } else {
+    window.location.href = "dashboard.html";
+  }
+}
+
+async function initInvite() {
+  if (!inviteToken) return;
+  const banner = document.getElementById("inviteBanner");
+  try {
+    const info = await api(`/invites/preview?token=${encodeURIComponent(inviteToken)}`);
+    inviteEmail = info.email;
+    banner.textContent = `${info.invited_by || "A lecturer"} invited ${info.email} to help with "${info.course_name}". Log in, or create an account with that email, to accept.`;
+    banner.style.display = "block";
+    document.getElementById("email").value = info.email;
+    document.getElementById("email").readOnly = true;
+    applyMode();
+    // Already signed in? Accept straight away.
+    const me = await api("/auth/me");
+    if (me.authenticated) {
+      try { await goAfterAuth(); }
+      catch (err) { showError(errorBox, err); }
+    }
+  } catch (err) {
+    showError(errorBox, err);
+  }
+}
+
 function hideSuccess() {
   successBox.style.display = "none";
   successBox.textContent = "";
@@ -47,7 +83,8 @@ function applyMode() {
   const isReset = mode === "reset";
 
   nameField.style.display = isRegister ? "block" : "none";
-  systemKeyField.style.display = (isRegister || isReset) ? "block" : "none";
+  // An invite replaces the department system key when registering.
+  systemKeyField.style.display = ((isRegister && !inviteToken) || isReset) ? "block" : "none";
   confirmPasswordField.style.display = isReset ? "block" : "none";
   forgotPasswordRow.style.display = mode === "login" ? "flex" : "none";
 
@@ -86,10 +123,10 @@ submitBtn.addEventListener("click", async () => {
     if (mode === "register") {
       const name = document.getElementById("name").value.trim();
       const systemKey = document.getElementById("systemKey").value;
-      if (!name || !email || !password || !systemKey) throw new Error("Fill in every field, including the system key.");
-      await api("/auth/register", { method: "POST", body: JSON.stringify({ name, email, password, system_key: systemKey }) });
+      if (!name || !email || !password || (!systemKey && !inviteToken)) throw new Error("Fill in every field, including the system key.");
+      await api("/auth/register", { method: "POST", body: JSON.stringify({ name, email, password, system_key: systemKey, invite_token: inviteToken }) });
       await api("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
-      window.location.href = "dashboard.html";
+      await goAfterAuth();
     } else if (mode === "reset") {
       const systemKey = document.getElementById("systemKey").value;
       const confirmPassword = document.getElementById("confirmPassword").value;
@@ -103,9 +140,11 @@ submitBtn.addEventListener("click", async () => {
     } else {
       if (!email || !password) throw new Error("Fill in every field.");
       await api("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
-      window.location.href = "dashboard.html";
+      await goAfterAuth();
     }
   } catch (err) {
     showError(errorBox, err);
   }
 });
+
+initInvite();

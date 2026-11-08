@@ -52,6 +52,13 @@ async function api(path, options = {}) {
   return data;
 }
 
+// Escape text before putting it into innerHTML. Names/titles come from uploaded
+// spreadsheets, and since TAs can now upload rosters too, they can't be trusted
+// to be plain text.
+function esc(value) {
+  return String(value ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+}
+
 function showError(el, err) {
   el.textContent = err.message || String(err);
   el.style.display = "block";

@@ -4,7 +4,7 @@ from flask import Blueprint, request, jsonify
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 
-from models import Lecturer as LecturerModel
+from models import Lecturer as LecturerModel, CourseInvite
 from rate_limit import limiter
 from csrf import get_or_create_csrf_token
 
@@ -62,10 +62,14 @@ def register():
     system_key = data.get("system_key")
     if not all([name, email, password]):
         return jsonify({"error": "name, email and password are all required"}), 400
-    if not _check_system_key(system_key):
+    # A valid invite for this exact email stands in for the department system
+    # key, so a TA outside the department can create an account. The invite was
+    # issued by an authenticated course owner, and only works for its own address.
+    invite = CourseInvite.find_valid(data.get("invite_token"), email=email)
+    if not invite and not _check_system_key(system_key):
         return jsonify({"error": "Invalid system key. Ask your department admin for the current key."}), 403
 
-    if LecturerModel.exists(email=email):
+    if LecturerModel.find_by_email(email):
         return jsonify({"error": "An account with that email already exists"}), 409
 
     LecturerModel.create(name=name, email=email, password_hash=generate_password_hash(password))

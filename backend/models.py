@@ -15,9 +15,25 @@ update/delete). Anything that needs a JOIN or an aggregate lives as a named
 classmethod near the model it's most about (e.g. Group.with_students,
 Evaluation.results) so it stays a one-line call from the route.
 """
-from datetime import datetime, timezone
+import hashlib
+import secrets
+from collections import defaultdict
+from statistics import mean, median
+from datetime import datetime, timedelta, timezone
 from werkzeug.security import generate_password_hash, check_password_hash
 from db import execute, batch, batch_execute
+
+
+# --------------------------------------------------------------------------
+# Anomaly-detection thresholds (all relative to the evaluation's own scale, so
+# they work for a 0-3 scale and a 1-10 scale alike). "span" below means the
+# largest possible total one evaluator can give one person:
+#     (highest scale value - lowest scale value) x number of criteria
+# --------------------------------------------------------------------------
+MIN_SCORES_FOR_UNIFORM = 4     # fewer ratings than this can match by pure chance
+OUTLIER_GAP = 0.35             # a rating this far (x span) from the others' median is an outlier...
+CONSENSUS_SPREAD = 0.25        # ...but only if the others roughly agree (their own spread <= this x span)
+SINGLED_OUT_GAP = 0.25         # ...and the evaluator rated everyone else this much differently (x span)
 
 
 # --------------------------------------------------------------------------
@@ -115,6 +131,31 @@ SCHEMA = [
         score            INTEGER NOT NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS course_members (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        course_id   INTEGER NOT NULL REFERENCES courses(id),
+        lecturer_id INTEGER NOT NULL REFERENCES lecturers(id),
+        role        TEXT NOT NULL DEFAULT 'ta',      -- the course's owner is courses.lecturer_id, not a row here
+        added_at    TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(course_id, lecturer_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS course_invites (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        course_id   INTEGER NOT NULL REFERENCES courses(id),
+        email       TEXT NOT NULL,                   -- stored lower-cased; the invite only works for this address
+        token_hash  TEXT NOT NULL UNIQUE,            -- SHA-256 of the secret token; the token itself is never stored
+        invited_by  INTEGER NOT NULL REFERENCES lecturers(id),
+        created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+        expires_at  TEXT NOT NULL,
+        accepted_at TEXT
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_members_course ON course_members(course_id)",
+    "CREATE INDEX IF NOT EXISTS idx_members_lecturer ON course_members(lecturer_id)",
+    "CREATE INDEX IF NOT EXISTS idx_invites_course ON course_invites(course_id)",
     "CREATE INDEX IF NOT EXISTS idx_classes_course ON classes(course_id)",
     "CREATE INDEX IF NOT EXISTS idx_groups_course ON groups(course_id)",
     "CREATE INDEX IF NOT EXISTS idx_students_group ON students(group_id)",
@@ -297,6 +338,85 @@ class Lecturer(Model):
     table = "lecturers"
     columns = ("id", "name", "email", "password_hash", "google_id", "created_at")
 
+    @classmethod
+    def find_by_email(cls, email):
+        """Case-insensitive email lookup (plain first(email=...) is case-sensitive in SQLite)."""
+        rs = execute("SELECT * FROM lecturers WHERE LOWER(email) = LOWER(?) LIMIT 1", [(email or "").strip()])
+        return cls._from_row(rs.rows[0], rs.columns) if rs.rows else None
+
+
+class CourseMember(Model):
+    """A TA (or other non-owner) who can work in someone else's course."""
+    table = "course_members"
+    columns = ("id", "course_id", "lecturer_id", "role", "added_at")
+
+    @classmethod
+    def with_lecturers(cls, course_id):
+        rs = execute(
+            "SELECT m.lecturer_id, m.role, m.added_at, l.name, l.email "
+            "FROM course_members m JOIN lecturers l ON l.id = m.lecturer_id "
+            "WHERE m.course_id = ? ORDER BY l.name",
+            [course_id],
+        )
+        return [dict(zip(rs.columns, row)) for row in rs.rows]
+
+
+INVITE_TTL_DAYS = 7
+
+
+def _hash_token(token):
+    return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
+
+
+class CourseInvite(Model):
+    """
+    A pending invitation for someone who doesn't have an account yet. The app
+    has no email-sending infrastructure, so the owner copies the generated link
+    and shares it themselves. Only a hash of the token is stored, the link is
+    shown once, and it only works for the invited email address, so a leaked
+    link is useless to anyone signed in as somebody else.
+    """
+    table = "course_invites"
+    columns = ("id", "course_id", "email", "token_hash", "invited_by", "created_at", "expires_at", "accepted_at")
+
+    @classmethod
+    def issue(cls, course_id, email, invited_by):
+        """Create (replacing any earlier pending invite for that email) and return (invite, raw_token)."""
+        email = email.strip().lower()
+        execute("DELETE FROM course_invites WHERE course_id = ? AND email = ? AND accepted_at IS NULL", [course_id, email])
+        token = secrets.token_urlsafe(32)
+        expires = (datetime.now(timezone.utc) + timedelta(days=INVITE_TTL_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        invite = cls.create(course_id=course_id, email=email, token_hash=_hash_token(token),
+                            invited_by=invited_by, expires_at=expires)
+        return invite, token
+
+    @classmethod
+    def find_valid(cls, token, email=None):
+        """The pending, unexpired invite for this token (and email, if given), or None."""
+        if not token:
+            return None
+        invite = cls.first(token_hash=_hash_token(token))
+        if not invite or invite.accepted_at:
+            return None
+        try:
+            expires = datetime.fromisoformat(invite.expires_at.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if datetime.now(timezone.utc) >= expires:
+            return None
+        if email is not None and invite.email != (email or "").strip().lower():
+            return None
+        return invite
+
+    @classmethod
+    def pending_for_course(cls, course_id):
+        rs = execute(
+            "SELECT id, email, created_at, expires_at FROM course_invites "
+            "WHERE course_id = ? AND accepted_at IS NULL AND expires_at > ? ORDER BY created_at DESC",
+            [course_id, datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")],
+        )
+        return [dict(zip(rs.columns, row)) for row in rs.rows]
+
 
 class Course(Model):
     table = "courses"
@@ -309,6 +429,31 @@ class Course(Model):
     def owned_by_id(cls, course_id, lecturer_id):
         """True if this course exists and belongs to this lecturer."""
         return cls.exists(id=course_id, lecturer_id=lecturer_id)
+
+    @classmethod
+    def role_for(cls, course_id, lecturer_id):
+        """'owner', 'ta', or None if this lecturer has no access to the course."""
+        if cls.owned_by_id(course_id, lecturer_id):
+            return "owner"
+        member = CourseMember.first(course_id=course_id, lecturer_id=lecturer_id)
+        return member.role if member else None
+
+    @classmethod
+    def for_lecturer(cls, lecturer_id):
+        """Every course this lecturer owns OR has been added to as a TA, newest first, with their role."""
+        rs = execute(
+            "SELECT * FROM ("
+            "  SELECT c.id AS id, c.lecturer_id AS lecturer_id, c.name AS name, c.created_at AS created_at, "
+            "         'owner' AS role, l.name AS owner_name "
+            "  FROM courses c JOIN lecturers l ON l.id = c.lecturer_id WHERE c.lecturer_id = ? "
+            "  UNION ALL "
+            "  SELECT c.id, c.lecturer_id, c.name, c.created_at, m.role, l.name "
+            "  FROM course_members m JOIN courses c ON c.id = m.course_id "
+            "  JOIN lecturers l ON l.id = c.lecturer_id WHERE m.lecturer_id = ?"
+            ") ORDER BY created_at DESC",
+            [lecturer_id, lecturer_id],
+        )
+        return [dict(zip(rs.columns, row)) for row in rs.rows]
 
     @classmethod
     def name_taken(cls, lecturer_id, name):
@@ -372,6 +517,8 @@ class Course(Model):
             ),
             ("DELETE FROM groups WHERE course_id = ?", [cid]),
             ("DELETE FROM classes WHERE course_id = ?", [cid]),
+            ("DELETE FROM course_members WHERE course_id = ?", [cid]),
+            ("DELETE FROM course_invites WHERE course_id = ?", [cid]),
             ("DELETE FROM courses WHERE id = ?", [cid]),
         ]
         batch_execute(statements)
@@ -717,6 +864,135 @@ class Evaluation(Model):
             })
         return list(groups_by_id.values())
 
+    def participation(self, completion=None, criteria_count=None):
+        """
+        Automatic participation grade for every student on the roster, keyed
+        by student id: how much of the peer evaluation they actually attempted.
+
+            full     -> 100%  rated every teammate on every criterion
+            partial  -> the share of the required ratings they completed
+            none     ->   0%  nothing submitted
+            n/a      ->  (sole member of a group: nobody to rate)
+
+        Today the student form only accepts a complete submission, so in
+        practice a student lands on full or none; the partial branch is what
+        makes this correct if that rule is ever relaxed (or data is imported).
+        """
+        completion = completion if completion is not None else self.completion()
+        if criteria_count is None:
+            criteria_count = len(EvaluationCriterion.where(evaluation_id=self.id))
+        rs = execute(
+            "SELECT sub.evaluator_student_id AS evaluator_id, COUNT(*) AS n "
+            "FROM submission_scores sc JOIN submissions sub ON sub.id = sc.submission_id "
+            "WHERE sub.evaluation_id = ? GROUP BY sub.evaluator_student_id",
+            [self.id],
+        )
+        given_by = {row[0]: row[1] for row in rs.rows}
+
+        out = {}
+        for g in completion:
+            expected = (len(g["students"]) - 1) * criteria_count
+            for st in g["students"]:
+                given = given_by.get(st["id"], 0)
+                if expected <= 0:
+                    out[st["id"]] = {"given": given, "expected": 0, "percent": None, "status": "n/a"}
+                    continue
+                fraction = min(given / expected, 1.0)
+                status = "full" if fraction >= 1 else ("partial" if fraction > 0 else "none")
+                out[st["id"]] = {
+                    "given": given, "expected": expected,
+                    "percent": round(fraction * 100), "status": status,
+                }
+        return out
+
+    def anomalies(self, individual_scores, completion, scale_values, criteria_count):
+        """
+        Flags scoring patterns a lecturer should look at. These are prompts to
+        review, never verdicts: a flag changes nobody's score.
+
+          same_score_everyone  one evaluator gave literally every rating the same value
+          uniform_totals       (milder) criteria differ, but every teammate got the same total
+          low_outlier          one evaluator scored a person far below what the rest of the
+                               group agreed on, while rating everyone else normally
+          high_outlier         the mirror image: far above a consensus (possible favouritism)
+
+        Outlier checks need at least two OTHER evaluators of the same person
+        to establish a consensus, so groups smaller than 4 can only receive the
+        two "same score" flags.
+        """
+        span = (max(scale_values) - min(scale_values)) * criteria_count if scale_values else 0
+        top = max(scale_values) * criteria_count if scale_values else 0
+        info = {st["id"]: (st["name"], g["group_label"]) for g in completion for st in g["students"]}
+
+        raw_by_ev = defaultdict(list)           # evaluator -> every individual rating
+        totals = defaultdict(lambda: defaultdict(float))   # evaluator -> ratee -> total across criteria
+        for row in individual_scores:
+            raw_by_ev[row["evaluator_id"]].append(row["score"])
+            totals[row["evaluator_id"]][row["ratee_id"]] += row["score"]
+
+        def fmt(x):
+            return f"{x:g}"
+
+        flags = []
+
+        for ev, scores in raw_by_ev.items():
+            peers = totals[ev]
+            name, group = info.get(ev, ("?", None))
+            if len(peers) >= 2 and len(scores) >= MIN_SCORES_FOR_UNIFORM and len(set(scores)) == 1:
+                flags.append({
+                    "type": "same_score_everyone", "severity": "medium", "group_label": group,
+                    "evaluator_id": ev, "evaluator_name": name, "ratee_id": None, "ratee_name": None,
+                    "message": f"{name} gave every rating the same value ({fmt(scores[0])}) — "
+                               f"{len(scores)} ratings across {len(peers)} teammates, no differentiation at all.",
+                })
+            elif len(peers) >= 3 and len(set(peers.values())) == 1:
+                flags.append({
+                    "type": "uniform_totals", "severity": "low", "group_label": group,
+                    "evaluator_id": ev, "evaluator_name": name, "ratee_id": None, "ratee_name": None,
+                    "message": f"{name} gave all {len(peers)} teammates the same total ({fmt(next(iter(peers.values())))}), "
+                               f"even though individual criteria varied.",
+                })
+
+        by_ratee = defaultdict(dict)            # ratee -> evaluator -> total
+        for ev, per_ratee in totals.items():
+            for rt, tot in per_ratee.items():
+                by_ratee[rt][ev] = tot
+
+        if span > 0:
+            for rt, d in by_ratee.items():
+                if len(d) < 3:
+                    continue
+                for ev, tot in d.items():
+                    others = [t for e, t in d.items() if e != ev]
+                    if max(others) - min(others) > CONSENSUS_SPREAD * span:
+                        continue            # the group itself disagrees; no consensus to deviate from
+                    med = median(others)
+                    rest = [t for r, t in totals[ev].items() if r != rt]
+                    if not rest:
+                        continue
+                    ev_mean = mean(rest)
+                    ev_name, group = info.get(ev, ("?", None))
+                    rt_name = info.get(rt, ("?", None))[0]
+                    common = {
+                        "group_label": group, "evaluator_id": ev, "evaluator_name": ev_name,
+                        "ratee_id": rt, "ratee_name": rt_name,
+                        "given_total": tot, "others_median": med,
+                    }
+                    range_txt = fmt(min(others)) if min(others) == max(others) else f"{fmt(min(others))}–{fmt(max(others))}"
+                    others_txt = f"the other {len(others)} teammates gave {range_txt} (median {fmt(med)})"
+                    if med - tot >= OUTLIER_GAP * span and ev_mean - tot >= SINGLED_OUT_GAP * span:
+                        flags.append({**common, "type": "low_outlier", "severity": "high",
+                            "message": f"{ev_name} gave {rt_name} {fmt(tot)} out of {fmt(top)}, but {others_txt}. "
+                                       f"{ev_name} rated the rest of the group {fmt(round(ev_mean, 1))} on average, so {rt_name} was singled out."})
+                    elif tot - med >= OUTLIER_GAP * span and tot - ev_mean >= SINGLED_OUT_GAP * span:
+                        flags.append({**common, "type": "high_outlier", "severity": "medium",
+                            "message": f"{ev_name} gave {rt_name} {fmt(tot)} out of {fmt(top)}, but {others_txt}. "
+                                       f"{ev_name} rated the rest of the group {fmt(round(ev_mean, 1))} on average, so {rt_name} was singled out."})
+
+        order = {"high": 0, "medium": 1, "low": 2}
+        flags.sort(key=lambda f: (order[f["severity"]], f["group_label"] or "", f["evaluator_name"]))
+        return flags
+
     def results(self):
         """Per-student averages (overall + per criterion) plus the full individual breakdown."""
         criteria = [c.to_dict() for c in EvaluationCriterion.where(order_by="sort_order", evaluation_id=self.id)]
@@ -769,7 +1045,15 @@ class Evaluation(Model):
             vals = [c["average"] for c in student["by_criterion"]]
             student["total"] = round(sum(vals), 2) if vals else None
 
-        return {"criteria": criteria, "aggregates": list(students_agg.values()), "individual_scores": individual_scores}
+        completion = self.completion()
+        scale_values = [sc.value for sc in EvaluationScale.where(evaluation_id=self.id)]
+        return {
+            "criteria": criteria,
+            "aggregates": list(students_agg.values()),
+            "individual_scores": individual_scores,
+            "participation": self.participation(completion, len(criteria)),
+            "anomalies": self.anomalies(individual_scores, completion, scale_values, len(criteria)),
+        }
 
 
 class EvaluationCriterion(Model):

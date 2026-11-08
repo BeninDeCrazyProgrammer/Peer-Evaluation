@@ -12,6 +12,7 @@ from routes.groups import groups_bp
 from routes.evaluations import evaluations_bp
 from routes.submissions import submissions_bp
 from routes.dashboard import dashboard_bp
+from routes.members import members_bp
 from models import init_db
 from rate_limit import limiter
 from csrf import csrf_protect, ensure_csrf_cookie
@@ -88,6 +89,7 @@ def create_app():
     app.register_blueprint(evaluations_bp)
     app.register_blueprint(submissions_bp)
     app.register_blueprint(dashboard_bp)
+    app.register_blueprint(members_bp)
 
     # --- Global error handler: keeps error responses as clean JSON instead of
     # an HTML traceback page, without swallowing the real status code. ---

@@ -50,6 +50,10 @@
                     <i data-lucide="graduation-cap" class="w-5 h-5"></i>
                     <span>Classes</span>
                 </button>
+                <button id="teamNavBtn" class="section-nav__item rail__item hidden" data-section="team">
+                    <i data-lucide="users" class="w-5 h-5"></i>
+                    <span>Team</span>
+                </button>
             </nav>
         </aside>
 
@@ -163,6 +167,21 @@
                 </div>
             </section>
 
+            <!-- SECTION: TEAM (owner only) -->
+            <section class="section-panel space-y-6" data-section="team">
+                <div class="bg-white rounded-3xl border border-slate-200 p-5 sm:p-8 shadow-sm">
+                    <h3 class="text-xl font-bold mb-2">Teaching assistants</h3>
+                    <p class="text-sm text-slate-500 mb-4">TAs can open this course, run evaluations, manage rosters and view and export results. They can't delete the course, classes or evaluations, or manage this team.</p>
+                    <div class="flex flex-col sm:flex-row gap-3">
+                        <input type="email" id="taEmail" placeholder="ta@university.edu" class="flex-1 p-3 rounded-xl bg-slate-50 border border-slate-200 outline-none focus:ring-2 focus:ring-orange-600/20 focus:border-orange-600">
+                        <button class="btn btn--clay shrink-0" id="addMemberBtn">Add TA</button>
+                    </div>
+                    <div id="teamError" class="text-red-500 text-sm font-medium hidden mt-2"></div>
+                    <div id="teamResult" class="hidden mt-3 p-3 rounded-xl bg-green-50 border border-green-200 text-sm text-slate-700"></div>
+                </div>
+                <div id="teamList" class="space-y-3"></div>
+            </section>
+
         </div>
     </main>
 
@@ -186,8 +205,8 @@
         </div>
     </div>
 
-    <script src="../js/api.js?v=20260817"></script>
-    <script src="course.js?v=20260817"></script>
+    <script src="../js/api.js?v=20261108"></script>
+    <script src="course.js?v=20261108"></script>
     <script>lucide.createIcons();</script>
 </body>
 </html>

@@ -3,6 +3,7 @@ if (!courseId) window.location.href = "dashboard.html";
 
 const gotoSection = initSections();
 let editingEvalId = null;
+let isOwner = false; // TAs can do everything except delete things and manage the team
 
 // Rating-scale presets. "custom" isn't filled by a click — it's what the
 // dropdown falls back to display-wise once someone hand-edits a preset's rows.
@@ -38,7 +39,7 @@ const createRow = (type, value = "", label = "") => {
         `;
     } else {
         div.innerHTML = `
-            <input type="text" class="scale-label !flex-1 min-w-0 p-2 rounded-lg bg-slate-50 border border-slate-200 text-sm focus:border-orange-600 outline-none" value="${label}" placeholder="Label">
+            <input type="text" class="scale-label !flex-1 min-w-0 p-2 rounded-lg bg-slate-50 border border-slate-200 text-sm focus:border-orange-600 outline-none" value="${esc(label)}" placeholder="Label">
             <input type="number" class="scale-value !w-16 shrink-0 p-2 rounded-lg bg-slate-50 border border-slate-200 text-sm focus:border-orange-600 outline-none" value="${value}" placeholder="0">
             <button class="p-2 text-slate-300 hover:text-red-500 transition-colors remove-row"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
         `;
@@ -94,6 +95,10 @@ async function loadCourseData() {
     document.getElementById("courseCrumbMobile").textContent = course.name;
     document.getElementById("courseEyebrow").textContent = `Course ID: ${course.id}`;
 
+    isOwner = course.role === "owner";
+    document.getElementById("teamNavBtn").classList.toggle("hidden", !isOwner);
+    if (isOwner) loadTeam();
+
     resetForm();
     await loadClasses();
     loadEvaluations();
@@ -147,20 +152,20 @@ async function loadEvaluations() {
                     <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400 shrink-0 transition-transform" data-eval-chevron="${ev.id}" style="${expandedEvalIds.has(ev.id) ? 'transform:rotate(90deg)' : ''}"></i>
                     <div class="min-w-0">
                         <div class="flex items-center gap-2 flex-wrap">
-                            <h4 class="font-bold text-slate-900 truncate">${ev.title}</h4>
+                            <h4 class="font-bold text-slate-900 truncate">${esc(ev.title)}</h4>
                             <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider shrink-0 ${isOpen ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}">
                                 ${ev.status}
                             </span>
-                            ${ev.class_name ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider shrink-0 bg-indigo-50 text-indigo-600">${ev.class_name}</span>` : ""}
+                            ${ev.class_name ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider shrink-0 bg-indigo-50 text-indigo-600">${esc(ev.class_name)}</span>` : ""}
                         </div>
                         <p class="text-xs text-slate-400">Created ${new Date(ev.created_at).toLocaleDateString()}${deadlineText ? ` · ${deadlineText}` : ""}</p>
                     </div>
                 </div>
                 <div class="flex flex-wrap gap-2 shrink-0" onclick="event.stopPropagation()">
-                    <button onclick="openModal(${ev.id}, '${ev.title.replace(/'/g, "\\'")}')" class="btn btn--ghost btn--sm btn--icon" data-tip="Share" aria-label="Share"><i data-lucide="share-2" class="w-4 h-4"></i></button>
+                    <button onclick="openModal(${ev.id}, this.dataset.title)" data-title="${esc(ev.title)}" class="btn btn--ghost btn--sm btn--icon" data-tip="Share" aria-label="Share"><i data-lucide="share-2" class="w-4 h-4"></i></button>
                     <a href="results.html?course=${courseId}&evaluation=${ev.id}" class="btn btn--ghost btn--sm btn--icon" data-tip="Results" aria-label="Results"><i data-lucide="pie-chart" class="w-4 h-4"></i></a>
                     <button onclick="startEditing(${ev.id})" class="btn btn--ghost btn--sm btn--icon" data-tip="Settings" aria-label="Settings"><i data-lucide="settings" class="w-4 h-4"></i></button>
-                    <button onclick="deleteEvaluation(${ev.id}, '${ev.title.replace(/'/g, "\\'")}')" class="btn btn--ghost btn--sm btn--icon btn--danger" data-tip="Delete" aria-label="Delete evaluation"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                    ${isOwner ? `<button onclick="deleteEvaluation(${ev.id}, this.dataset.title)" data-title="${esc(ev.title)}" class="btn btn--ghost btn--sm btn--icon btn--danger" data-tip="Delete" aria-label="Delete evaluation"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ""}
                 </div>
             </div>
             <div class="${expandedEvalIds.has(ev.id) ? '' : 'hidden'} border-t border-slate-100 p-5 bg-slate-50/50" data-eval-body="${ev.id}">
@@ -204,13 +209,13 @@ function renderEvalCardBody(id) {
             <div>
                 <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Assessment Criteria</p>
                 <ul class="space-y-1">
-                    ${full.criteria.map(c => `<li class="text-sm text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-1.5">${c.name}</li>`).join("")}
+                    ${full.criteria.map(c => `<li class="text-sm text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-1.5">${esc(c.name)}</li>`).join("")}
                 </ul>
             </div>
             <div>
                 <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Rating Scale</p>
                 <ul class="space-y-1">
-                    ${full.scale.map(s => `<li class="text-sm text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-1.5 flex items-center justify-between"><span>${s.label}</span><span class="font-mono font-bold text-orange-600">${s.value}</span></li>`).join("")}
+                    ${full.scale.map(s => `<li class="text-sm text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-1.5 flex items-center justify-between"><span>${esc(s.label)}</span><span class="font-mono font-bold text-orange-600">${s.value}</span></li>`).join("")}
                 </ul>
             </div>
         </div>
@@ -293,7 +298,7 @@ async function startEditing(id) {
     // to, but don't let it be changed here (the backend doesn't allow it).
     const classSelect = document.getElementById("evalClass");
     if (![...classSelect.options].some(o => o.value === String(ev.class_id))) {
-        classSelect.innerHTML = loadedClasses.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+        classSelect.innerHTML = loadedClasses.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
     }
     classSelect.value = ev.class_id;
     classSelect.disabled = true;
@@ -325,7 +330,7 @@ function renderEvalClassSelect() {
         hint.textContent = "Create a class under the Classes tab first — an evaluation always runs against one class's roster.";
         return;
     }
-    select.innerHTML = loadedClasses.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+    select.innerHTML = loadedClasses.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
 }
 
 async function loadClasses() {
@@ -346,12 +351,12 @@ function renderClassesList() {
                 <div class="flex items-center gap-3 min-w-0">
                     <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400 shrink-0 transition-transform" data-class-chevron="${cls.id}" style="${expandedClassIds.has(cls.id) ? 'transform:rotate(90deg)' : ''}"></i>
                     <div class="min-w-0">
-                        <h4 class="font-bold text-slate-900 truncate">${cls.name}</h4>
+                        <h4 class="font-bold text-slate-900 truncate">${esc(cls.name)}</h4>
                         <p class="text-xs text-slate-400">Created ${new Date(cls.created_at).toLocaleDateString()}</p>
                     </div>
                 </div>
                 <div class="flex gap-2 shrink-0" onclick="event.stopPropagation()">
-                    <button onclick="deleteClass(${cls.id}, '${cls.name.replace(/'/g, "\\'")}')" class="btn btn--ghost btn--sm"><i data-lucide="trash-2" class="w-4 h-4"></i> Delete</button>
+                    ${isOwner ? `<button onclick="deleteClass(${cls.id}, this.dataset.name)" data-name="${esc(cls.name)}" class="btn btn--ghost btn--sm"><i data-lucide="trash-2" class="w-4 h-4"></i> Delete</button>` : ""}
                 </div>
             </div>
             <div class="${expandedClassIds.has(cls.id) ? '' : 'hidden'} border-t border-slate-100 p-5 bg-slate-50/50 space-y-6" data-class-body="${cls.id}">
@@ -420,15 +425,15 @@ async function loadClassRoster(classId) {
     }
     container.innerHTML = groups.map(g => `
         <div class="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-            <h5 class="font-bold text-slate-800 text-sm mb-2">${g.group_label}</h5>
+            <h5 class="font-bold text-slate-800 text-sm mb-2">${esc(g.group_label)}</h5>
             <div class="space-y-1">
                 ${g.students.map(s => `
                     <div class="flex items-center justify-between text-xs bg-white border border-slate-200 rounded-lg px-2 py-1.5 gap-2">
-                        <span class="text-slate-700 font-medium truncate">${s.name}</span>
+                        <span class="text-slate-700 font-medium truncate">${esc(s.name)}</span>
                         <span class="flex items-center gap-2 shrink-0">
                             ${s.pin_set
                                 ? `<span class="text-[10px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">PIN set</span>
-                                   <button onclick="resetStudentPin(${classId}, ${s.id}, '${s.name.replace(/'/g, "\\'")}')" class="text-[10px] font-bold text-slate-400 hover:text-red-600 uppercase">Reset</button>`
+                                   <button onclick="resetStudentPin(${classId}, ${s.id}, this.dataset.name)" data-name="${esc(s.name)}" class="text-[10px] font-bold text-slate-400 hover:text-red-600 uppercase">Reset</button>`
                                 : `<span class="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Not set yet</span>`}
                         </span>
                     </div>
@@ -600,6 +605,83 @@ function downloadQr() {
     a.click();
     a.remove();
 }
+
+// Team (TAs) — owner only
+function renderTeam(team) {
+    const list = document.getElementById("teamList");
+    const rows = [
+        `<div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
+            <div><p class="font-bold text-slate-800 text-sm">${esc(team.owner.name)}</p><p class="text-xs text-slate-400">${esc(team.owner.email)}</p></div>
+            <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-900 text-white">Owner</span>
+        </div>`,
+        ...team.members.map(m => `
+            <div class="flex items-center justify-between p-3 rounded-xl border border-slate-200">
+                <div class="min-w-0"><p class="font-bold text-slate-800 text-sm truncate">${esc(m.name)}</p><p class="text-xs text-slate-400 truncate">${esc(m.email)}</p></div>
+                <div class="flex items-center gap-3 shrink-0">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-50 text-indigo-600">TA</span>
+                    <button class="text-xs font-bold text-slate-400 hover:text-red-600 uppercase" onclick="removeMember(${m.lecturer_id}, this.dataset.name)" data-name="${esc(m.name)}">Remove</button>
+                </div>
+            </div>`),
+        ...team.invites.map(i => `
+            <div class="flex items-center justify-between p-3 rounded-xl border border-dashed border-slate-300">
+                <div class="min-w-0"><p class="font-bold text-slate-600 text-sm truncate">${esc(i.email)}</p><p class="text-xs text-slate-400">Invite pending, expires ${new Date(i.expires_at).toLocaleDateString()}</p></div>
+                <button class="text-xs font-bold text-slate-400 hover:text-red-600 uppercase shrink-0" onclick="revokeInvite(${i.id})">Revoke</button>
+            </div>`),
+    ];
+    list.innerHTML = rows.join("");
+}
+
+async function loadTeam() {
+    try { renderTeam(await api(`/courses/${courseId}/members`)); }
+    catch (err) { console.warn("Couldn't load team:", err); }
+}
+
+async function removeMember(lecturerId, name) {
+    if (!confirm(`Remove ${name}'s access to this course?`)) return;
+    try { await api(`/courses/${courseId}/members/${lecturerId}`, { method: "DELETE" }); await loadTeam(); }
+    catch (err) { alert(err.message); }
+}
+
+async function revokeInvite(inviteId) {
+    try { await api(`/courses/${courseId}/invites/${inviteId}`, { method: "DELETE" }); await loadTeam(); }
+    catch (err) { alert(err.message); }
+}
+
+document.getElementById("addMemberBtn").addEventListener("click", async () => {
+    const errBox = document.getElementById("teamError");
+    const resultBox = document.getElementById("teamResult");
+    const input = document.getElementById("taEmail");
+    errBox.classList.add("hidden");
+    resultBox.classList.add("hidden");
+    const email = input.value.trim();
+    if (!email) { errBox.textContent = "Enter the TA's email address."; errBox.classList.remove("hidden"); return; }
+
+    const btn = document.getElementById("addMemberBtn");
+    btn.disabled = true;
+    try {
+        const res = await api(`/courses/${courseId}/members`, { method: "POST", body: JSON.stringify({ email }) });
+        input.value = "";
+        if (res.status === "added") {
+            resultBox.innerHTML = `<b>${esc(res.name)}</b> (${esc(res.email)}) now has access. The course is on their dashboard. Check this is the right person.`;
+        } else {
+            resultBox.innerHTML = `No account exists for <b>${esc(res.email)}</b> yet. Send them this link (shown once, works only for that email, expires in 7 days):
+                <div class="mt-2 flex gap-2"><input id="inviteLinkField" readonly class="flex-1 min-w-0 p-2 rounded-lg bg-white border border-slate-200 text-xs font-mono">
+                <button class="btn btn--ghost btn--sm" id="copyInviteBtn">Copy</button></div>`;
+            document.getElementById("inviteLinkField").value = res.invite_link;
+            document.getElementById("copyInviteBtn").addEventListener("click", async (e) => {
+                await navigator.clipboard.writeText(res.invite_link);
+                e.target.textContent = "Copied";
+            });
+        }
+        resultBox.classList.remove("hidden");
+        await loadTeam();
+    } catch (err) {
+        errBox.textContent = err.message;
+        errBox.classList.remove("hidden");
+    } finally {
+        btn.disabled = false;
+    }
+});
 
 // Final Wiring
 document.getElementById("addCriterion").addEventListener("click", () => {
