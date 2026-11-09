@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_login import login_required
 
 from models import Group, Student, Class
-from routes.courses import _assert_owns_course
+from routes.courses import _assert_course_access
 from utils.excel_parser import parse_groups_excel
 
 # Nested under a specific class, not just the course — a course can now have
@@ -13,7 +13,7 @@ groups_bp = Blueprint("groups", __name__, url_prefix="/courses/<int:course_id>/c
 
 def _assert_owns_class(course_id, class_id):
     """True if this class exists, belongs to this course, and the course belongs to the logged-in lecturer."""
-    if not _assert_owns_course(course_id):
+    if not _assert_course_access(course_id):
         return False
     return Class.exists(id=class_id, course_id=course_id)
 

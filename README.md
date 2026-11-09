@@ -32,7 +32,8 @@ backend/
     groups.py             Excel upload/parse
     evaluations.py        Criteria + scale, creation, link/QR
     submissions.py        Student lookup, submit
-    dashboard.py          Completion tracking, results
+    dashboard.py          Completion tracking, results, Excel export
+    members.py            Teaching assistants: add/remove, invite links
   utils/
     excel_parser.py  Groups spreadsheet parser
 frontend/
@@ -164,6 +165,30 @@ application. Authorized redirect URI: `<your Render URL>/auth/google/callback`.
   then the full individual evaluator breakdown below it.
 - **Results show both individual evaluator scores and aggregated averages**
   per the lecturer's request — see `routes/dashboard.py`.
+- **Matrix colors:** yellow (diagonal) = that student's automatic
+  participation grade, green = the evaluator didn't submit / didn't rate that
+  person, white = the total they gave, orange ring = a flagged rating.
+- **Participation grade (automatic):** full attempt (rated every teammate on
+  every criterion) = 100%, partial = the share of required ratings completed,
+  no attempt = 0%. Shown in the matrix's yellow cells and in the Excel
+  export's `Participation` sheet. The student form currently only accepts a
+  complete submission, so in practice a student gets 100% or 0%.
+- **Anomaly flags** (Results > Flags tab, plus the `Flags` sheet in the
+  export): someone giving every rating the same value, someone giving every
+  teammate the same total, and one evaluator scoring a person far below (or
+  above) what the rest of the group agreed on while rating everyone else
+  normally. Thresholds are constants at the top of `models.py` and are relative
+  to the evaluation's own scale. Flags are prompts to review, never penalties.
+  Outlier checks need at least 4 people in a group (two other raters to form
+  a consensus).
+- **Teaching assistants:** the course owner adds a TA by email on the course's
+  Team tab. If that email already has an account, they get access
+  immediately. Otherwise a one-time invite link is generated (the app has no
+  email sending, so the owner sends it). The link works only for that email,
+  expires after 7 days, and lets that person register without the department
+  system key. TAs can run evaluations, manage rosters and view/export
+  results; only the owner can delete courses, classes and evaluations or manage
+  the team.
 - Re-uploading a groups spreadsheet for a course replaces the existing
   groups/students for that course.
 

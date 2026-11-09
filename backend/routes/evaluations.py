@@ -8,7 +8,7 @@ from flask_login import login_required
 import qrcode
 
 from models import Evaluation, Submission, Class
-from routes.courses import _assert_owns_course
+from routes.courses import _assert_course_access, _assert_course_owner
 
 evaluations_bp = Blueprint("evaluations", __name__, url_prefix="/courses/<int:course_id>/evaluations")
 
@@ -68,7 +68,7 @@ def create_evaluation(course_id):
     course can now have more than one class (year group/section), so this
     is required and fixed at creation — see Class in models.py.
     """
-    if not _assert_owns_course(course_id):
+    if not _assert_course_access(course_id):
         return jsonify({"error": "Course not found"}), 404
 
     data = request.get_json(force=True)
@@ -91,7 +91,7 @@ def create_evaluation(course_id):
 @evaluations_bp.route("", methods=["GET"])
 @login_required
 def list_evaluations(course_id):
-    if not _assert_owns_course(course_id):
+    if not _assert_course_access(course_id):
         return jsonify({"error": "Course not found"}), 404
     evals = Evaluation.where(order_by="created_at DESC", course_id=course_id)
     classes_by_id = {c.id: c.name for c in Class.where(course_id=course_id)}
@@ -120,7 +120,7 @@ def update_evaluation(course_id, evaluation_id):
     has zero submissions, since changing criteria or scale values afterward
     would silently invalidate students' answers.
     """
-    if not _assert_owns_course(course_id):
+    if not _assert_course_access(course_id):
         return jsonify({"error": "Course not found"}), 404
 
     evaluation = Evaluation.first(id=evaluation_id, course_id=course_id)
@@ -153,7 +153,7 @@ def update_deadline(course_id, evaluation_id):
     the lecturer shouldn't have to touch a locked criteria/scale just to
     push a deadline back.
     """
-    if not _assert_owns_course(course_id):
+    if not _assert_course_access(course_id):
         return jsonify({"error": "Course not found"}), 404
     evaluation = Evaluation.first(id=evaluation_id, course_id=course_id)
     if not evaluation:
@@ -171,7 +171,7 @@ def update_deadline(course_id, evaluation_id):
 @evaluations_bp.route("/<int:evaluation_id>/close", methods=["POST"])
 @login_required
 def close_evaluation(course_id, evaluation_id):
-    if not _assert_owns_course(course_id):
+    if not _assert_course_access(course_id):
         return jsonify({"error": "Course not found"}), 404
     evaluation = Evaluation.first(id=evaluation_id, course_id=course_id)
     if not evaluation:
@@ -183,8 +183,8 @@ def close_evaluation(course_id, evaluation_id):
 @evaluations_bp.route("/<int:evaluation_id>", methods=["DELETE"])
 @login_required
 def delete_evaluation(course_id, evaluation_id):
-    """Permanently removes an evaluation with its criteria, scale and all submissions."""
-    if not _assert_owns_course(course_id):
+    """Permanently removes an evaluation with its criteria, scale and all submissions. Owner only."""
+    if not _assert_course_owner(course_id):
         return jsonify({"error": "Course not found"}), 404
     evaluation = Evaluation.first(id=evaluation_id, course_id=course_id)
     if not evaluation:
@@ -196,7 +196,7 @@ def delete_evaluation(course_id, evaluation_id):
 @evaluations_bp.route("/<int:evaluation_id>/link", methods=["GET"])
 @login_required
 def get_link(course_id, evaluation_id):
-    if not _assert_owns_course(course_id):
+    if not _assert_course_access(course_id):
         return jsonify({"error": "Course not found"}), 404
 
     frontend_url = os.environ.get("FRONTEND_URL", "")

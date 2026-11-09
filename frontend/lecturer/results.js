@@ -53,7 +53,51 @@ async function refreshData() {
     renderAveragesTable(globalData);
     renderRankings(globalData);
     renderMatrix(completion, globalData);
+    renderFlags(globalData);
 }
+
+const FLAG_STYLE = {
+    high:   { label: "High",   cls: "bg-red-100 text-red-700" },
+    medium: { label: "Medium", cls: "bg-amber-100 text-amber-700" },
+    low:    { label: "Low",    cls: "bg-slate-100 text-slate-600" },
+};
+const FLAG_TITLE = {
+    same_score_everyone: "Same score for everyone",
+    uniform_totals: "Same total for everyone",
+    low_outlier: "Unusually low compared with the group",
+    high_outlier: "Unusually high compared with the group",
+};
+
+function renderFlags(data) {
+    const flags = data.anomalies;
+    const badge = document.getElementById("flagsBadge");
+    badge.textContent = flags.length;
+    badge.classList.toggle("hidden", flags.length === 0);
+
+    const list = document.getElementById("flagsList");
+    if (flags.length === 0) {
+        list.innerHTML = `<div class="p-12 text-center border-2 border-dashed border-slate-100 rounded-3xl text-slate-400">No anomalies detected.</div>`;
+        return;
+    }
+    list.innerHTML = flags.map(f => {
+        const sev = FLAG_STYLE[f.severity] || FLAG_STYLE.low;
+        return `
+            <div class="p-4 rounded-xl border border-slate-200 bg-white">
+                <div class="flex flex-wrap items-center gap-2 mb-1.5">
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${sev.cls}">${sev.label}</span>
+                    <span class="font-bold text-slate-800 text-sm">${esc(FLAG_TITLE[f.type] || f.type)}</span>
+                    <span class="text-xs text-slate-400">· ${esc(f.group_label ?? "")}</span>
+                </div>
+                <p class="text-sm text-slate-600">${esc(f.message)}</p>
+                <button class="mt-2 text-orange-600 hover:text-orange-700 font-bold text-xs uppercase tracking-wider"
+                        onclick="openEvaluatorDrawer(this.dataset.name)" data-name="${esc(f.ratee_name ?? f.evaluator_name)}">
+                    Inspect ${esc(f.ratee_name ?? f.evaluator_name)}
+                </button>
+            </div>`;
+    }).join("");
+}
+
+function openEvaluatorDrawer(name) { openDrawer(name); }
 
 function renderKPIs(completion, results) {
     // 1. Completion Rate
@@ -80,13 +124,8 @@ function renderKPIs(completion, results) {
     const totalClassAvg = totals.length > 0 ? (totals.reduce((a, b) => a + b, 0) / totals.length).toFixed(2) : "0.00";
     document.getElementById("statTotalAvg").textContent = totalClassAvg;
 
-    // 3. Conflict detection (Simple logic: if a student's criteria have a spread > 2)
-    let conflicts = 0;
-    results.aggregates.forEach(s => {
-        const spread = results.individual_scores.filter(is => is.ratee_name === s.name);
-        // Logical check: If same student, same criterion, different scores
-        // This is a placeholder for more complex "Grand" logic
-    });
+    // 3. Flags to review: scoring anomalies found server-side (Evaluation.anomalies)
+    const conflicts = results.anomalies.length;
     document.getElementById("statConflicts").textContent = conflicts;
 }
 
@@ -100,7 +139,7 @@ function renderCompletionGrid(groups) {
             <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
                 <div class="flex justify-between items-start mb-4">
                     <div>
-                        <h4 class="font-bold text-slate-800">${g.group_label}</h4>
+                        <h4 class="font-bold text-slate-800">${esc(g.group_label)}</h4>
                         <p class="text-xs text-slate-400">${g.students.length} Members</p>
                     </div>
                     <div class="text-right">
@@ -110,7 +149,7 @@ function renderCompletionGrid(groups) {
                 <div class="space-y-2">
                     ${g.students.map(s => `
                         <div class="flex items-center justify-between text-sm">
-                            <span class="${s.has_submitted ? 'text-slate-700' : 'text-slate-400 italic'}">${s.name}</span>
+                            <span class="${s.has_submitted ? 'text-slate-700' : 'text-slate-400 italic'}">${esc(s.name)}</span>
                             <i data-lucide="${s.has_submitted ? 'check-circle' : 'circle'}" 
                                class="w-4 h-4 ${s.has_submitted ? 'text-green-500' : 'text-slate-200'}"></i>
                         </div>
@@ -126,7 +165,7 @@ function renderAveragesTable(data) {
     const head = document.getElementById("aggHead");
     head.innerHTML = `
         <th class="p-4 text-xs font-bold text-slate-500 uppercase">Student</th>
-        ${data.criteria.map(c => `<th class="p-4 text-xs font-bold text-slate-500 uppercase text-center">${c.name}</th>`).join('')}
+        ${data.criteria.map(c => `<th class="p-4 text-xs font-bold text-slate-500 uppercase text-center">${esc(c.name)}</th>`).join('')}
         <th class="p-4 text-xs font-bold text-slate-500 uppercase text-center">Total</th>
         <th class="p-4 text-xs font-bold text-slate-500 uppercase text-right">Actions</th>
     `;
@@ -142,7 +181,7 @@ function renderAveragesTable(data) {
         
         return `
             <tr class="hover:bg-slate-50/50 transition-colors">
-                <td class="p-4 font-bold text-slate-800">${s.name}</td>
+                <td class="p-4 font-bold text-slate-800">${esc(s.name)}</td>
                 ${data.criteria.map(c => {
                     const val = byName[c.name] ?? "—";
                     const colorClass = val === "—" ? "text-slate-300" : (val < 2 ? "text-red-600 font-bold" : "text-slate-600");
@@ -152,7 +191,7 @@ function renderAveragesTable(data) {
                     <span class="px-3 py-1 bg-slate-900 text-white rounded-full text-xs font-bold">${s.total ?? "—"}</span>
                 </td>
                 <td class="p-4 text-right">
-                    <button onclick="openDrawer('${s.name}')" class="text-orange-600 hover:text-orange-700 font-bold text-xs uppercase tracking-wider">
+                    <button onclick="openDrawer(this.dataset.name)" data-name="${esc(s.name)}" class="text-orange-600 hover:text-orange-700 font-bold text-xs uppercase tracking-wider">
                         Inspect
                     </button>
                 </td>
@@ -179,8 +218,8 @@ function renderRankings(data) {
     body.innerHTML = ranked.map((s, i) => `
         <tr class="hover:bg-slate-50/50 transition-colors">
             <td class="p-4 font-bold text-slate-400">${i + 1}</td>
-            <td class="p-4 font-bold text-slate-800">${s.name}</td>
-            <td class="p-4 text-slate-500">${s.group_label ?? "—"}</td>
+            <td class="p-4 font-bold text-slate-800">${esc(s.name)}</td>
+            <td class="p-4 text-slate-500">${esc(s.group_label ?? "—")}</td>
             <td class="p-4 text-center">
                 <span class="px-3 py-1 bg-slate-900 text-white rounded-full text-xs font-bold">${s.total}</span>
             </td>
@@ -216,6 +255,10 @@ function renderMatrix(completion, data) {
         totalsByPair[key] = (totalsByPair[key] || 0) + row.score;
     });
 
+    // Flags by pair (outliers) and by evaluator (same-score patterns).
+    const flaggedPairs = new Set(data.anomalies.filter(f => f.ratee_id != null).map(f => `${f.evaluator_id}-${f.ratee_id}`));
+    const flaggedEvaluators = new Set(data.anomalies.filter(f => f.ratee_id == null).map(f => f.evaluator_id));
+
     const groupsWithMembers = completion.filter(g => g.students.length > 0);
     if (groupsWithMembers.length === 0) {
         container.innerHTML = `<div class="p-12 text-center border-2 border-dashed border-slate-100 rounded-3xl text-slate-400">No groups in this class yet.</div>`;
@@ -225,28 +268,34 @@ function renderMatrix(completion, data) {
     container.innerHTML = groupsWithMembers.map(group => {
         const students = group.students; // [{id, name, student_id, has_submitted}]
 
-        const headerCells = students.map(e => `<th class="matrix-colhead">${e.name}</th>`).join("");
+        const headerCells = students.map(e => `<th class="matrix-colhead">${esc(e.name)}${flaggedEvaluators.has(e.id) ? `<span class="matrix-flagmark" title="Flagged: same score pattern, see Flags tab">⚑</span>` : ""}</th>`).join("");
 
         const rows = students.map(ratee => {
             const cells = students.map(evaluator => {
                 if (evaluator.id === ratee.id) {
-                    return `<td class="matrix-cell matrix-cell--self" title="Self">—</td>`;
+                    // Diagonal = this student's automatic participation grade.
+                    const part = data.participation[evaluator.id];
+                    const label = { full: "Full attempt", partial: "Partial attempt", none: "No attempt", "n/a": "No one to rate" }[part?.status] ?? "";
+                    const text = part && part.percent !== null ? `${part.percent}%` : "—";
+                    const tip = part ? `${evaluator.name}: ${label} (${part.given} of ${part.expected} ratings)` : "Self";
+                    return `<td class="matrix-cell matrix-cell--self" title="${esc(tip)}">${text}</td>`;
                 }
                 if (!evaluator.has_submitted) {
-                    return `<td class="matrix-cell matrix-cell--missing" title="${evaluator.name} did not submit an evaluation">—</td>`;
+                    return `<td class="matrix-cell matrix-cell--missing" title="${esc(evaluator.name)} did not submit an evaluation">—</td>`;
                 }
                 const total = totalsByPair[`${evaluator.id}-${ratee.id}`];
                 if (total === undefined) {
-                    return `<td class="matrix-cell matrix-cell--missing" title="${evaluator.name} did not evaluate ${ratee.name}">—</td>`;
+                    return `<td class="matrix-cell matrix-cell--missing" title="${esc(evaluator.name)} did not evaluate ${esc(ratee.name)}">—</td>`;
                 }
-                return `<td class="matrix-cell">${total}</td>`;
+                const flagged = flaggedPairs.has(`${evaluator.id}-${ratee.id}`);
+                return `<td class="matrix-cell${flagged ? " matrix-cell--flag" : ""}"${flagged ? ` title="Flagged: see Flags tab"` : ""}>${total}</td>`;
             }).join("");
-            return `<tr><th class="matrix-rowhead">${ratee.name}</th>${cells}</tr>`;
+            return `<tr><th class="matrix-rowhead">${esc(ratee.name)}</th>${cells}</tr>`;
         }).join("");
 
         return `
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                <div class="p-4 border-b border-slate-100 bg-slate-50 font-bold text-slate-800">${group.group_label}</div>
+                <div class="p-4 border-b border-slate-100 bg-slate-50 font-bold text-slate-800">${esc(group.group_label)}</div>
                 <div class="overflow-x-auto">
                     <table class="matrix-table w-full">
                         <thead><tr><th class="matrix-corner matrix-rowhead"></th>${headerCells}</tr></thead>
@@ -281,12 +330,12 @@ function openDrawer(studentName) {
             <div class="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
                 <div class="flex items-center gap-2 mb-3 text-slate-500">
                     <i data-lucide="user" class="w-4 h-4"></i>
-                    <span class="text-sm font-bold uppercase tracking-tight">Evaluator: ${evaluator}</span>
+                    <span class="text-sm font-bold uppercase tracking-tight">Evaluator: ${esc(evaluator)}</span>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                     ${ratings.map(r => `
                         <div class="bg-white p-3 rounded border border-slate-200">
-                            <p class="text-[10px] uppercase text-slate-400 font-bold">${r.criterion}</p>
+                            <p class="text-[10px] uppercase text-slate-400 font-bold">${esc(r.criterion)}</p>
                             <p class="text-lg font-bold text-slate-800">${r.score}</p>
                         </div>
                     `).join('')}

@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_login import login_required
 
 from models import Class
-from routes.courses import _assert_owns_course
+from routes.courses import _assert_course_access, _assert_course_owner
 
 classes_bp = Blueprint("classes", __name__, url_prefix="/courses/<int:course_id>/classes")
 
@@ -17,7 +17,7 @@ def create_class(course_id):
     section, or cohort at once, each gets its own class with its own groups
     upload, so evaluating one never touches another's roster or results.
     """
-    if not _assert_owns_course(course_id):
+    if not _assert_course_access(course_id):
         return jsonify({"error": "Course not found"}), 404
 
     data = request.get_json(force=True)
@@ -35,7 +35,7 @@ def create_class(course_id):
 @classes_bp.route("", methods=["GET"])
 @login_required
 def list_classes(course_id):
-    if not _assert_owns_course(course_id):
+    if not _assert_course_access(course_id):
         return jsonify({"error": "Course not found"}), 404
     classes = Class.where(order_by="created_at DESC", course_id=course_id)
     return jsonify([c.to_dict() for c in classes])
@@ -44,7 +44,7 @@ def list_classes(course_id):
 @classes_bp.route("/<int:class_id>", methods=["GET"])
 @login_required
 def get_class(course_id, class_id):
-    if not _assert_owns_course(course_id):
+    if not _assert_course_access(course_id):
         return jsonify({"error": "Course not found"}), 404
     cls = Class.first(id=class_id, course_id=course_id)
     if not cls:
@@ -59,8 +59,10 @@ def delete_class(course_id, class_id):
     Deletes a class and everything under it — its groups, students, and
     every evaluation (with criteria/scale/submissions/scores) created for
     it. Irreversible; the frontend is expected to confirm before calling
-    this.
+    this. Owner only (TAs can't delete classes).
     """
+    if not _assert_course_owner(course_id):
+        return jsonify({"error": "Class not found"}), 404
     cls = Class.first(id=class_id, course_id=course_id)
     if not cls:
         return jsonify({"error": "Class not found"}), 404

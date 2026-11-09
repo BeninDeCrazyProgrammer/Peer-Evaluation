@@ -20,14 +20,16 @@ async function loadCourses() {
   courses.forEach(c => {
     const div = document.createElement("div");
     div.className = "list-item";
+    const isOwner = c.role === "owner";
     div.innerHTML = `
       <div>
-        <strong>${c.name}</strong><br>
+        <strong>${esc(c.name)}</strong>
+        ${isOwner ? "" : `<span class="hint" style="margin-left:6px">TA · owned by ${esc(c.owner_name)}</span>`}<br>
         <span class="hint">Created ${new Date(c.created_at).toLocaleDateString()}</span>
       </div>
       <div style="display:flex; gap:8px;">
         <a class="btn btn--ghost btn--sm" href="course.html?course=${c.id}">Open</a>
-        <button class="btn btn--ghost btn--sm delete-course-btn" data-id="${c.id}" data-name="${c.name}">Delete</button>
+        ${isOwner ? `<button class="btn btn--ghost btn--sm delete-course-btn" data-id="${c.id}" data-name="${esc(c.name)}">Delete</button>` : ""}
       </div>
     `;
     list.appendChild(div);

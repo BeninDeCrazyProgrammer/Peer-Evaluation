@@ -29,21 +29,29 @@ def create_course():
 @courses_bp.route("", methods=["GET"])
 @login_required
 def list_courses():
-    courses = Course.where(order_by="created_at DESC", lecturer_id=current_user.id)
-    return jsonify([c.to_dict() for c in courses])
+    """Courses the lecturer owns plus courses they've been added to as a TA (each row has a `role`)."""
+    return jsonify(Course.for_lecturer(current_user.id))
 
 
-def _assert_owns_course(course_id):
-    """True if this course belongs to the logged-in lecturer."""
+def _assert_course_access(course_id):
+    """True if the logged-in user owns this course OR was added to it as a TA."""
+    return Course.role_for(course_id, current_user.id) is not None
+
+
+def _assert_course_owner(course_id):
+    """True only if the logged-in user owns this course. Used for destructive actions and managing the team."""
     return Course.owned_by_id(course_id, current_user.id)
 
 
 @courses_bp.route("/<int:course_id>", methods=["GET"])
 @login_required
 def get_course(course_id):
-    if not _assert_owns_course(course_id):
+    role = Course.role_for(course_id, current_user.id)
+    if not role:
         return jsonify({"error": "Course not found"}), 404
-    return jsonify(Course.find(course_id).to_dict())
+    data = Course.find(course_id).to_dict()
+    data["role"] = role
+    return jsonify(data)
 
 
 @courses_bp.route("/<int:course_id>", methods=["DELETE"])
